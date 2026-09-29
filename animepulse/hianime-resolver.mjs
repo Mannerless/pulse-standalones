@@ -51,7 +51,19 @@ export async function listServers(epId) {
 }
 
 // Load the player in headless Chrome and capture the stream + subtitle URLs the player requests.
-async function captureStream(embedUrl, timeoutMs = 35000) {
+// Subtitle track choice. A dub's FULL English captions are the sub script (different wording and timing
+// than the spoken dub), and the order of a player's tracks varies per episode, so "first English track"
+// randomly gave dubs a full-dialogue file. Dubs only get signs/songs/forced tracks; subs get full dialogue.
+const SIGNS_RE = /sign|song|forced|lyric|karaoke/i;
+export function pickSubtitleTrack(tracks, mode) {
+  const caps = (tracks || []).filter((t) => t && t.file && (t.kind === 'captions' || t.kind === 'subtitles'));
+  const english = caps.filter((t) => /english|^en\b/i.test(t.label || ''));
+  if (mode === 'dub') return english.find((t) => SIGNS_RE.test(t.label || '')) || null;
+  const pool = english.length ? english : caps;
+  return pool.find((t) => !SIGNS_RE.test(t.label || '')) || pool.find((t) => SIGNS_RE.test(t.label || '')) || null;
+}
+
+async function captureStream(embedUrl, timeoutMs = 35000, mode = 'sub') {
   const browser = await puppeteer.launch({
     executablePath: CHROME, headless: 'new',
     args: ['--no-first-run', '--mute-audio', '--autoplay-policy=no-user-gesture-required', '--disable-features=Translate'],
@@ -60,7 +72,7 @@ async function captureStream(embedUrl, timeoutMs = 35000) {
     const page = await browser.newPage();
     await page.setUserAgent(UA);
     await page.setExtraHTTPHeaders({ Referer: `${BASE}/` });
-    let m3u8 = null; let vtt = null; let m3u8Headers = null;
+    let m3u8 = null; let tracks = null; let m3u8Headers = null;
     page.on('request', (r) => {
       const u = r.url();
       if (!m3u8 && /\.m3u8(\?|$)/.test(u)) { m3u8 = u; m3u8Headers = r.headers(); }
@@ -70,8 +82,7 @@ async function captureStream(embedUrl, timeoutMs = 35000) {
       try {
         if (/getSources/.test(u)) {
           const j = JSON.parse(await r.text());
-          const t = (j.tracks || []).find((x) => x.kind === 'captions' && /english/i.test(x.label || '')) || (j.tracks || []).find((x) => x.kind === 'captions');
-          if (t && t.file) vtt = t.file;
+          if (!tracks && Array.isArray(j.tracks)) tracks = j.tracks; // first response wins, same as the m3u8
         }
       } catch { /* not JSON */ }
     });
@@ -86,7 +97,8 @@ async function captureStream(embedUrl, timeoutMs = 35000) {
       }
     }
     if (!m3u8) throw new Error('Player did not request a stream (no .m3u8 seen)');
-    return { m3u8, vtt, headers: m3u8Headers || {} };
+    const picked = pickSubtitleTrack(tracks, mode);
+    return { m3u8, vtt: picked ? picked.file : null, vttLabel: picked ? picked.label : null, headers: m3u8Headers || {} };
   } finally {
     await browser.close().catch(() => {});
   }
@@ -109,7 +121,7 @@ export async function resolveEpisode({ titles, episode, mode }) {
     servers.sort((a, b) => (a.name === 'HD-2' ? -1 : 0) - (b.name === 'HD-2' ? -1 : 0));
     for (const s of servers) {
       try {
-        const cap = await captureStream(s.embed);
+        const cap = await captureStream(s.embed, 35000, mode);
         return { m3u8: cap.m3u8, referer: `${new URL(s.embed).origin}/`, vtt: cap.vtt, server: s.name, type: mode, slug: hit.slug, title: hit.title };
       } catch (e) { tries.push(`"${hit.title}" ep ${episode} ${mode} ${s.name}: ${e.message}`); }
     }

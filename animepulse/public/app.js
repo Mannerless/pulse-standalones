@@ -505,6 +505,55 @@
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Resume where you left off (positions are stored server-side per anime + episode)
+  // ---------------------------------------------------------------------------
+  let playbackCtx = null;      // { animeId, episode } of what is currently playing; null while switching
+  let playbackToken = 0;       // invalidates stale async work when the episode changes
+  let playbackLastSent = 0;
+  let playbackTrackingReady = false;
+
+  const fmtPlaybackTime = (secs) => {
+    const s = Math.max(0, Math.floor(secs));
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = String(s % 60).padStart(2, '0');
+    return h ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${m}:${sec}`;
+  };
+
+  function sendPlaybackPosition(useBeacon) {
+    if (!playbackCtx || !nativePlayer) return;
+    const t = nativePlayer.currentTime;
+    const d = nativePlayer.duration;
+    if (!Number.isFinite(t) || t < 1) return;
+    const body = JSON.stringify({
+      animeId: playbackCtx.animeId,
+      episode: playbackCtx.episode,
+      position: t,
+      duration: Number.isFinite(d) ? d : 0,
+    });
+    playbackLastSent = Date.now();
+    if (useBeacon && navigator.sendBeacon) {
+      navigator.sendBeacon('/api/playback', new Blob([body], { type: 'application/json' }));
+    } else {
+      fetch('/api/playback', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, keepalive: true }).catch(() => {});
+    }
+  }
+
+  function setupPlaybackTracking() {
+    if (playbackTrackingReady || !nativePlayer) return;
+    playbackTrackingReady = true;
+    nativePlayer.addEventListener('timeupdate', () => {
+      if (!nativePlayer.paused && Date.now() - playbackLastSent > 5000) sendPlaybackPosition(false);
+    });
+    nativePlayer.addEventListener('pause', () => sendPlaybackPosition(false));
+    nativePlayer.addEventListener('ended', () => sendPlaybackPosition(false)); // server clears it near the end
+    window.addEventListener('pagehide', () => sendPlaybackPosition(true));
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') sendPlaybackPosition(true);
+    });
+  }
+
   function playLocalVideo(anime, epNum) {
     if (!anime || !playerTheaterBox || !nativePlayer) return;
     const title = anime.title?.english || anime.title?.romaji || 'Anime';
@@ -518,6 +567,11 @@
     nativePlayer.style.display = 'block';
     playerTheaterBox.style.display = 'block';
 
+    // Save the episode we are leaving, then stop tracking until the new one has been resumed.
+    sendPlaybackPosition(false);
+    playbackCtx = null;
+    setupPlaybackTracking();
+
     while (nativePlayer.firstChild) {
       nativePlayer.removeChild(nativePlayer.firstChild);
     }
@@ -527,13 +581,52 @@
 
     nativePlayer.src = streamUrl;
 
-    const track = document.createElement('track');
-    track.kind = 'subtitles';
-    track.src = subUrl;
-    track.srclang = 'en';
-    track.label = 'English';
-    track.default = true;
-    nativePlayer.appendChild(track);
+    // Resume: fetch the saved position and seek once the metadata is ready (whichever arrives last).
+    const myToken = ++playbackToken;
+    let resumeAt = null;
+    let metaReady = nativePlayer.readyState >= 1;
+    let resumeDone = false;
+    const tryResume = () => {
+      if (myToken !== playbackToken || resumeDone || resumeAt === null || !metaReady) return;
+      resumeDone = true;
+      const d = nativePlayer.duration;
+      if (resumeAt > 5 && (!Number.isFinite(d) || resumeAt < d - 15)) {
+        nativePlayer.currentTime = resumeAt;
+        showToast(`⏩ Resumed Episode ${epNum} at ${fmtPlaybackTime(resumeAt)}`);
+      }
+      playbackCtx = { animeId: anime.id, episode: epNum }; // start saving only after the resume decision
+    };
+    nativePlayer.addEventListener('loadedmetadata', () => { metaReady = true; tryResume(); }, { once: true });
+    fetch(`/api/playback?animeId=${encodeURIComponent(anime.id)}&episode=${encodeURIComponent(epNum)}`)
+      .then((r) => r.json())
+      .then((p) => { resumeAt = p && p.success ? Number(p.position) || 0 : 0; tryResume(); })
+      .catch(() => { resumeAt = 0; tryResume(); });
+
+    // Subtitles: one active track, dub-aware default, CC toggle + timing nudge (see subs.js).
+    const updateSubControls = (st) => {
+      const modeBtn = document.getElementById('sub-mode-btn');
+      const lbl = document.getElementById('sub-offset-lbl');
+      if (modeBtn) {
+        modeBtn.textContent = st.mode === 'on' ? 'CC: On' : st.mode === 'off' ? 'CC: Off' : `CC: Auto (${st.showing ? 'on' : 'off'})`;
+        modeBtn.title = st.mode === 'auto'
+          ? 'Auto: hidden for an English dub whose captions are the full sub script (wording and timing do not match the dub). Click to force On / Off.'
+          : 'Click to cycle Auto / On / Off';
+      }
+      if (lbl) lbl.textContent = `${st.offset > 0 ? '+' : ''}${st.offset.toFixed(1)}s`;
+    };
+    let subCtl = null;
+    if (window.APSubs) {
+      subCtl = window.APSubs.attach(nativePlayer, subUrl, `ap_subpref_${anime.id}_${epNum}`, updateSubControls);
+    } else {
+      // subs.js failed to load: fall back to a single plain track
+      const fallbackTrack = document.createElement('track');
+      fallbackTrack.kind = 'subtitles';
+      fallbackTrack.src = subUrl;
+      fallbackTrack.srclang = 'en';
+      fallbackTrack.label = 'English';
+      fallbackTrack.default = true;
+      nativePlayer.appendChild(fallbackTrack);
+    }
 
     if (playerStreamTitle) {
       playerStreamTitle.textContent = `${title} — Episode ${epNum} (⚡ 0-Lag Ultra-Buffered Local HD)`;
@@ -543,13 +636,29 @@
       playerServerChips.innerHTML = `
         <button class="chip-server active" type="button">⚡ Local 1080p Ultra-Buffer (0ms Scrub)</button>
         <button id="chip-audio-badge" class="chip-server" type="button" style="border-color: rgba(16, 185, 129, 0.4); color: #10b981;">🔊 Dub Priority Verified</button>
+        <span style="display:inline-flex;gap:6px;align-items:center;margin-left:10px">
+          <button id="sub-mode-btn" class="chip-server" type="button">CC</button>
+          <button id="sub-back-btn" class="chip-server" type="button" title="Subtitles appear 0.5s EARLIER">◀ 0.5s</button>
+          <span id="sub-offset-lbl" style="font-size:12px;opacity:.8;min-width:42px;text-align:center">0.0s</span>
+          <button id="sub-fwd-btn" class="chip-server" type="button" title="Subtitles appear 0.5s LATER">0.5s ▶</button>
+          <button id="sub-reset-btn" class="chip-server" type="button" title="Reset subtitle timing">reset</button>
+        </span>
       `;
+      if (subCtl) {
+        const bind = (id, fn) => { const el = document.getElementById(id); if (el) el.addEventListener('click', fn); };
+        bind('sub-mode-btn', () => subCtl.cycleMode());
+        bind('sub-back-btn', () => subCtl.nudge(-subCtl.step));
+        bind('sub-fwd-btn', () => subCtl.nudge(subCtl.step));
+        bind('sub-reset-btn', () => subCtl.resetOffset());
+        updateSubControls(subCtl.state());
+      }
     }
 
     // Probe status to display exact multi-pass verification tag in header
     fetch(`/api/download/status?animeId=${encodeURIComponent(anime.id)}&episode=${encodeURIComponent(epNum)}`)
       .then((r) => r.json())
       .then((st) => {
+        if (st && st.success && subCtl) subCtl.setDub(!!st.isDub);
         if (st.success) {
           const badgeText = st.audioLabel || (st.isDub ? 'English Dub (Verified ✓)' : 'Subbed (Dub Unavailable)');
           if (playerStreamTitle) {
@@ -1361,6 +1470,9 @@
           playerFrame.style.display = 'block';
         }
         if (nativePlayer) {
+          sendPlaybackPosition(false);
+          playbackCtx = null;
+          playbackToken++;
           nativePlayer.pause();
           nativePlayer.removeAttribute('src');
           nativePlayer.load();

@@ -8,6 +8,9 @@ Anime discovery and watch tracker built on AniList.
 - Tabs: Trending, Most Popular (top 100, paged), Currently Airing, Top Rated. Search, genre filter, pagination.
 - Full-series view for any title: prequel and sequel chain in watch order with a one-click jump to the original.
 - Watch history, episode downloads (uses `ani-cli`), in-app **Close** button (handy with no window manager).
+- Resume: the local player remembers where you stopped, per episode, and seeks back there next time.
+- Subtitles: one active track at a time; dubs with full sub-script captions start with subtitles off (they don't match
+  the dub), with a CC toggle and a ±0.5s timing nudge that are remembered per episode.
 - Launch: `animepulse/launch.sh` (port 7888). Needs `node`, `google-chrome`, `ss`; `ani-cli` for downloads.
 
 ## VaultPulse (`vaultpulse/`)

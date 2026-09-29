@@ -28,6 +28,7 @@ const HOST = process.env.ANIMEPULSE_HOST || (SHARE_ON ? '0.0.0.0' : '127.0.0.1')
 const TUNNEL_ENABLED = SHARE_ON && process.env.ANIMEPULSE_TUNNEL !== '0';
 const DATA_DIR = path.join(__dirname, 'data');
 const HISTORY_FILE = path.join(DATA_DIR, 'history.json');
+const PLAYBACK_FILE = path.join(DATA_DIR, 'playback.json');
 const STATS_FILE = path.join(DATA_DIR, 'stats.json');
 const REMOTE_ACCESS_FILE = path.join(DATA_DIR, 'remote_access.json');
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -88,6 +89,22 @@ function getHistoryRaw() {
 }
 
 // Save history safely
+// Playback positions: resume where you left off, per anime + episode. Newest 500 kept.
+function playbackKey(animeId, episode) {
+  const a = String(animeId ?? '').trim();
+  const e = parseInt(episode, 10);
+  if (!/^\d{1,9}$/.test(a) || !Number.isFinite(e) || e < 1 || e > 5000) return null;
+  return `${a}_${e}`;
+}
+function loadPlayback() {
+  try { return JSON.parse(fs.readFileSync(PLAYBACK_FILE, 'utf8')) || {}; } catch { return {}; }
+}
+function savePlayback(all) {
+  const tmp = `${PLAYBACK_FILE}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(all));
+  fs.renameSync(tmp, PLAYBACK_FILE);
+}
+
 function saveHistory(history) {
   try {
     fs.writeFileSync(HISTORY_FILE, JSON.stringify(history.slice(0, 100), null, 2), 'utf8');
@@ -1210,6 +1227,63 @@ const server = http.createServer(async (req, res) => {
     // -----------------------------------------------------------------------
     // API: GET /api/history
     // -----------------------------------------------------------------------
+    // -----------------------------------------------------------------------
+    // API: playback positions (resume where you left off)
+    // -----------------------------------------------------------------------
+    if (pathname === '/api/playback' && req.method === 'GET') {
+      const key = playbackKey(parsedUrl.searchParams.get('animeId'), parsedUrl.searchParams.get('episode'));
+      if (!key) {
+        sendError(400, 'Invalid animeId or episode');
+        return;
+      }
+      const entry = loadPlayback()[key];
+      sendJson(200, {
+        success: true,
+        position: entry ? entry.position : 0,
+        duration: entry ? entry.duration : 0,
+        updatedAt: entry ? entry.updatedAt : null,
+      });
+      return;
+    }
+
+    if (pathname === '/api/playback' && req.method === 'POST') {
+      let body = '';
+      for await (const chunk of req) {
+        body += chunk;
+        if (body.length > 4096) break;
+      }
+      let payload;
+      try {
+        payload = JSON.parse(body);
+      } catch {
+        sendError(400, 'Invalid JSON body');
+        return;
+      }
+      const key = playbackKey(payload.animeId, payload.episode);
+      const position = Number(payload.position);
+      const duration = Number(payload.duration) || 0;
+      if (!key || !Number.isFinite(position) || position < 0 || position > 86400) {
+        sendError(400, 'Invalid playback payload');
+        return;
+      }
+      const all = loadPlayback();
+      // Not really started, or finished (within 15s of the end): forget it so the next play starts at 0.
+      const finished = duration > 0 && position > duration - 15;
+      if (position < 5 || finished) {
+        delete all[key];
+      } else {
+        all[key] = { position: Math.round(position * 10) / 10, duration: Math.round(duration), updatedAt: new Date().toISOString() };
+      }
+      const keys = Object.keys(all);
+      if (keys.length > 500) {
+        keys.sort((a, b) => String(all[a].updatedAt).localeCompare(String(all[b].updatedAt)))
+          .slice(0, keys.length - 500).forEach((k) => { delete all[k]; });
+      }
+      savePlayback(all);
+      sendJson(200, { success: true, saved: !!all[key] });
+      return;
+    }
+
     if (pathname === '/api/history' && req.method === 'GET') {
       const history = getHistory(true);
       sendJson(200, { success: true, history });
