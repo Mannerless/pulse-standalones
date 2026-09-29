@@ -334,25 +334,28 @@ const REAL_CATEGORY_SEARCH_MAP = {
 // plus anything covered by the exclusions (futa, trans, male-on-male).
 // -----------------------------------------------------------------------------
 const HENTAI_KINK_GROUPS = [
+  { group: 'Family & Taboo', items: [['Incest', '🏡 Incest'], ['Shimaidon', '👭 Sisters (Shimaidon)'], ['Oyakodon', '👩‍👧 Mother & Daughter (Oyakodon)']] },
   { group: 'Power & Restraint', items: [['Bondage', '⛓️ Bondage'], ['Femdom', '👠 Femdom'], ['Sadism', '😈 Sadism'], ['Masochism', '🖤 Masochism'], ['Pet Play', '🐾 Pet Play'], ['Human Pet', '🐕 Human Pet']] },
   { group: 'Exhibition & Watching', items: [['Exhibitionism', '🎭 Exhibitionism'], ['Public Sex', '🌆 Public Sex'], ['Voyeur', '👀 Voyeur']] },
-  { group: 'Body & Fetish', items: [['Feet', '🦶 Feet'], ['Armpits', '💪 Armpits'], ['Sweat', '💧 Sweat'], ['Lactation', '💧 Lactation'], ['Boobjob', '🍈 Boobjob'], ['Sumata', '🍑 Sumata'], ['Ashikoki', '🦶 Footjob'], ['Ahegao', '🤤 Ahegao']] },
+  { group: 'Body & Fetish', items: [['Feet', '🦶 Feet'], ['Armpits', '💪 Armpits'], ['Sweat', '💧 Sweat'], ['Boobjob', '🍈 Boobjob'], ['Sumata', '🍑 Sumata'], ['Ashikoki', '🦶 Footjob'], ['Ahegao', '🤤 Ahegao']] },
   { group: 'Relationship Dynamics', items: [['Netorare', '💔 Netorare (NTR)'], ['Netori', '🔁 Netori'], ['Netorase', '👁️ Netorase'], ['Group Sex', '👥 Group Sex'], ['Virginity', '🌸 Virginity'], ['Prostitution', '💋 Prostitution'], ['Hypersexuality', '🔥 Hypersexuality']] },
   { group: 'Acts', items: [['Anal Sex', '🍑 Anal'], ['Deepthroat', '🗣️ Deepthroat'], ['Fellatio', '👄 Fellatio'], ['Cunnilingus', '👅 Cunnilingus'], ['Handjob', '✋ Handjob'], ['Fingering', '☝️ Fingering'], ['Double Penetration', '✌️ Double Penetration'], ['Facial', '💦 Facial'], ['Nakadashi', '💦 Creampie'], ['Squirting', '🚿 Squirting'], ['Mating Press', '🛏️ Mating Press'], ['Cumflation', '🎈 Cumflation'], ['Cervix Penetration', '🎯 Deep / Cervix'], ['Sex Toys', '🧸 Sex Toys'], ['Masturbation', '🖐️ Masturbation'], ['Scissoring', '✂️ Scissoring'], ['Rimjob', '🍑 Rimjob'], ['Irrumatio', '🗣️ Irrumatio'], ['Fisting', '✊ Fisting']] },
   { group: 'Fantasy Kinks', items: [['Tentacles', '🐙 Tentacles']] },
 ];
 
 const REAL_KINK_GROUPS = [
+  { group: 'Family & Taboo', items: [['step fantasy', '🏡 Step Fantasy', 'step fantasy roleplay american'], ['stepsister', '👭 Stepsister', 'step sister roleplay american'], ['sister', '👭 Sister', 'sister roleplay american'], ['stepmom', '👩 Stepmom', 'step mom roleplay american'], ['stepbrother', '🧑 Stepbrother', 'step brother roleplay american']] },
   { group: 'Fetish & BDSM', items: [['bdsm', '⛓️ BDSM', 'bdsm bondage american'], ['bondage', '🪢 Bondage', 'bondage rope american'], ['femdom', '👠 Femdom', 'femdom domination american'], ['feet', '🦶 Foot Fetish', 'foot fetish feet american'], ['latex', '🖤 Latex & Leather', 'latex leather fetish american'], ['heels', '👠 Heels & Stockings', 'high heels stockings american'], ['lingerie', '🩱 Lingerie', 'lingerie stockings american'], ['spanking', '🖐️ Spanking', 'spanking american'], ['facesitting', '🪑 Facesitting', 'facesitting american'], ['strapon', '🪢 Strap-on', 'strapon female domination american'], ['roleplay', '🎭 Roleplay', 'roleplay american couple'], ['cosplay', '🦸 Cosplay', 'cosplay american costume']] },
   { group: 'Relationship Dynamics', items: [['cuckold', '👁️ Cuckold & Hotwife', 'cuckold hotwife american'], ['swingers', '🔄 Swingers', 'swingers american couple'], ['gangbang', '👥 Gangbang', 'gangbang american'], ['orgy', '🎉 Orgy', 'orgy american party']] },
   { group: 'Exhibition', items: [['public', '🌆 Public', 'public flashing american'], ['exhibitionist', '🎭 Exhibitionist', 'exhibitionist outdoor american']] },
-  { group: 'Acts', items: [['anal', '🍑 Anal', 'anal american'], ['deepthroat', '🗣️ Deepthroat', 'deepthroat american'], ['blowjob', '👄 Blowjob', 'blowjob american'], ['handjob', '✋ Handjob', 'handjob american'], ['creampie', '💦 Creampie', 'creampie american'], ['facial', '💦 Facial', 'facial cumshot american'], ['dp', '✌️ Double Penetration', 'double penetration american'], ['bukkake', '🌧️ Bukkake', 'bukkake american'], ['toys', '🧸 Sex Toys', 'sex toys vibrator american'], ['lactation', '💧 Lactation', 'lactating milk american'], ['rough', '💥 Rough', 'rough sex american']] },
-  { group: 'Body & Look', items: [['bbw', '🍑 BBW', 'bbw american'], ['big ass', '🍑 Big Ass', 'big ass american'], ['tattoos', '🖋️ Tattoos & Alt', 'tattoo alt american'], ['goth', '🖤 Goth & Alt', 'goth alt american']] },
+  { group: 'Acts', items: [['anal', '🍑 Anal', 'anal american'], ['deepthroat', '🗣️ Deepthroat', 'deepthroat american'], ['blowjob', '👄 Blowjob', 'blowjob american'], ['handjob', '✋ Handjob', 'handjob american'], ['creampie', '💦 Creampie', 'creampie american'], ['facial', '💦 Facial', 'facial cumshot american'], ['dp', '✌️ Double Penetration', 'double penetration american'], ['bukkake', '🌧️ Bukkake', 'bukkake american'], ['toys', '🧸 Sex Toys', 'sex toys vibrator american'], ['rough', '💥 Rough', 'rough sex american']] },
+  { group: 'Body & Look', items: [['big ass', '🍑 Big Ass', 'big ass american'], ['tattoos', '🖋️ Tattoos & Alt', 'tattoo alt american'], ['goth', '🖤 Goth & Alt', 'goth alt american']] },
 ];
 for (const g of REAL_KINK_GROUPS) for (const [id, , q] of g.items) REAL_CATEGORY_SEARCH_MAP[id] = q;
 
 // RedTube's category list contains test rows, non-adult topics and celebrity impersonation bait.
 const REAL_CATEGORY_HIDE = new Set([
+  'bbw',
   'test category', 'test prod', 'a new one', 'all category new12345', 'all new categiry', 'yes',
   'sfw', 'educational content', 'family and parenting', 'food and cooking', 'gaming', 'live gaming',
   'news and commentary', 'music', 'product reviews and unboxings', 'vlogs', 'personal branding',
@@ -596,16 +599,17 @@ async function getFullCategories(type) {
   } else {
     const d = await fetchAniList('{ GenreCollection MediaTagCollection { name isAdult category } }');
     const genres = (d?.GenreCollection || []).map((g) => ({ id: g, name: g, group: 'Genres' }));
+    const HENTAI_TAG_HIDE = new Set(['Lactation']);
     const kinkById = new Map(HENTAI_KINK_GROUPS.flatMap((g) => g.items.map(([id, label], order) => [id, { group: g.group, label, order }])));
     const tags = (d?.MediaTagCollection || []).map((t) => {
-      const k = t.isAdult ? kinkById.get(t.name) : null;
+      const k = kinkById.get(t.name) || null;
       return {
         id: t.name, name: t.name,
         group: k ? k.group : (t.isAdult ? 'Adult tags (other)' : (t.category || 'Tags').replace(/^Theme-/, 'Theme: ').replace(/^Setting-/, 'Setting: ').replace(/^Cast-/, 'Cast: ').replace(/^Demographic$/, 'Demographic')),
         ...(k ? { label: k.label, featured: true, order: k.order } : {}),
       };
     });
-    list = [...genres, ...tags];
+    list = [...genres, ...tags].filter((c) => !HENTAI_TAG_HIDE.has(c.id));
   }
   const seen = new Set();
   // Kink/fetish groups first (in their defined order), then everything else alphabetically.
