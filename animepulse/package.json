@@ -1,0 +1,14 @@
+{
+  "name": "anime-pulse",
+  "version": "1.0.0",
+  "description": "Anime popularity discovery, availability index, and open-choice streaming launcher",
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "@consumet/extensions": "^1.8.8",
+    "localtunnel": "^2.0.2",
+    "puppeteer-core": "^25.12.0"
+  }
+}

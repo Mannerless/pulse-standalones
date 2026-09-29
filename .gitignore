@@ -1,0 +1,14 @@
+# Private data, never commit: vaults, history, downloads, caches, per-app state
+data/
+*.enc
+.env
+*.log
+*.bak
+*.bak-*
+
+# Dependencies and environments (reinstall with npm install)
+node_modules/
+.venv/
+
+# Vendored third-party browser extension (uBlock Origin Lite); see README
+extensions/

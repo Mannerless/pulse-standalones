@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="X-Content-Type-Options" content="nosniff">
+  <title>VaultPulse — Private Media Vault</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- Global Header -->
+  <header class="app-header">
+    <div class="brand">
+      <span class="brand-icon">🛡️</span>
+      <span class="brand-title">VaultPulse</span>
+      <span class="brand-badge">Private & Encrypted</span>
+    </div>
+
+    <!-- Mode Selector: Hentai vs Real Content -->
+    <div class="mode-selector">
+      <button class="mode-btn active" data-content-type="hentai">🌸 Hentai</button>
+      <button class="mode-btn" data-content-type="real">🎥 Real Content</button>
+    </div>
+
+    <!-- Search Bar -->
+    <div class="search-box">
+      <input type="text" id="search-input" placeholder="Search uncensored catalog..." autocomplete="off" spellcheck="false">
+      <button id="search-clear-btn" class="btn-icon" style="display:none;" title="Clear Search">✕</button>
+    </div>
+
+    <!-- Security Controls -->
+    <div class="header-actions">
+      <div id="vault-status-indicator" class="status-indicator locked">
+        <span class="status-dot"></span>
+        <span id="vault-status-text">Locked</span>
+      </div>
+      <a id="admin-link" class="btn-stealth" href="/admin.html" title="Admin console" style="text-decoration:none">🛠 Admin</a>
+      <button id="share-btn" class="btn-stealth" title="Create a private invite link + one-time passcode">🔗 Share</button>
+      <button id="personalize-btn" class="btn-stealth" title="Personalize Homepage">⚙️ Personalize</button>
+      <button id="lock-btn" class="btn-stealth" title="Panic Lock Vault (Esc)">🔒 Lock Vault</button>
+      <button id="exit-btn" class="btn-stealth" type="button" title="Lock the vault and close this window (click twice)">⏻ Lock &amp; Exit</button>
+      <button id="kill-btn" class="btn-danger" type="button" title="KILL SWITCH: lock, destroy this browser profile and Tor state, relaunch fresh (click twice)">🧨 Kill Switch</button>
+      <button id="purge-btn" class="btn-danger" title="Emergency Self-Destruct All Data">⚠️ Purge Data</button>
+    </div>
+  </header>
+
+  <!-- Navigation / Categories Bar -->
+  <nav class="nav-bar">
+    <div class="nav-tabs">
+      <button class="nav-tab active" data-view="explore" data-cat="trending">🔥 Trending</button>
+      <button class="nav-tab" data-view="explore" data-cat="popular">⭐ Most Popular</button>
+      <button class="nav-tab" data-view="explore" data-cat="top">🏆 Top Rated</button>
+      <button class="nav-tab" data-view="explore" data-cat="recent">🆕 Recent</button>
+      <button class="nav-tab" data-view="history">🕒 Encrypted History</button>
+      <button class="nav-tab" data-view="bookmarks">❤️ Bookmarks</button>
+    </div>
+
+    <div class="nav-filters">
+      <label class="uncensored-pill" title="Filter for uncensored releases only">
+        <input type="checkbox" id="uncensored-filter" checked>
+        <span>⚡ Uncensored Priority</span>
+      </label>
+    </div>
+  </nav>
+
+  <!-- Wide Variety Category Selection Strip -->
+  <div class="category-strip" id="category-strip">
+    <!-- Populated dynamically based on Hentai vs Real Content -->
+  </div>
+
+  <!-- Main Content Container -->
+  <main class="main-content" id="main-content">
+    <div id="loading-spinner" class="loading-state" style="display: none;">
+      <div class="spinner"></div>
+      <p id="loading-text">Loading verified uncensored catalog...</p>
+    </div>
+
+    <!-- Personalized Homepage Shelves (Continue Watching & Bookmarks) -->
+    <div id="homepage-personalization" class="homepage-personalization">
+      <div id="shelf-continue" class="shelf-container" style="display: none;">
+        <div class="shelf-header">
+          <h3>▶ Continue Watching</h3>
+          <span class="shelf-sub">Encrypted in RAM</span>
+        </div>
+        <div id="shelf-continue-row" class="shelf-row"></div>
+      </div>
+
+      <div id="shelf-bookmarks" class="shelf-container" style="display: none;">
+        <div class="shelf-header">
+          <h3>❤️ Saved Bookmarks</h3>
+          <span class="shelf-sub">Quick Access</span>
+        </div>
+        <div id="shelf-bookmarks-row" class="shelf-row"></div>
+      </div>
+
+      <div class="shelf-header catalog-header">
+        <h3 id="catalog-heading">🔥 Trending Uncensored Catalog</h3>
+        <span id="catalog-sub" class="shelf-sub">Endless Scroll Active</span>
+      </div>
+    </div>
+
+    <!-- Main Infinite Grid -->
+    <div id="media-grid" class="media-grid"></div>
+
+    <!-- Infinite Scroll Trigger -->
+    <div id="infinite-scroll-sentinel" class="infinite-sentinel">
+      <div id="infinite-scroll-spinner" class="spinner" style="display: none; width: 26px; height: 26px; margin: 15px auto;"></div>
+    </div>
+
+    <div id="empty-state" class="empty-state" style="display: none;">
+      <div class="empty-icon">📂</div>
+      <h3 id="empty-title">No Titles Found</h3>
+      <p id="empty-desc">Your vault is currently empty or no results matched your search.</p>
+    </div>
+  </main>
+
+  <!-- Personalization Preferences Modal -->
+  <div id="prefs-modal" class="modal-overlay" style="display: none;">
+    <div class="modal-card detail-card" style="max-width: 520px;">
+      <button id="prefs-close-btn" class="modal-close-btn" title="Close">✕</button>
+      <h2 style="margin-bottom: 12px;">⚙️ Homepage Personalization</h2>
+      <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 20px;">Customize your default experience. All preferences are saved inside your encrypted vault.</p>
+
+      <form id="prefs-form">
+        <div style="margin-bottom: 16px;">
+          <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px;">Default Content Feed</label>
+          <div style="display: flex; gap: 10px;">
+            <label style="font-size: 13px; display: flex; align-items: center; gap: 6px; cursor: pointer;">
+              <input type="radio" name="pref-mode" value="hentai" checked> 🌸 Hentai
+            </label>
+            <label style="font-size: 13px; display: flex; align-items: center; gap: 6px; cursor: pointer;">
+              <input type="radio" name="pref-mode" value="real"> 🎥 Real Content
+            </label>
+          </div>
+        </div>
+
+        <div style="margin-bottom: 16px;">
+          <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px;">Uncensored Policy</label>
+          <label style="font-size: 13px; display: flex; align-items: center; gap: 6px; cursor: pointer;">
+            <input type="checkbox" id="pref-uncensored" checked> Always prioritize uncensored releases
+          </label>
+        </div>
+
+        <div style="margin-bottom: 24px;">
+          <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 8px;">Favorite Genres for Recommendations</label>
+          <div id="pref-genre-tags" class="genre-tags">
+            <span class="genre-tag selectable active" data-genre="Romance">Romance</span>
+            <span class="genre-tag selectable active" data-genre="Comedy">Comedy</span>
+            <span class="genre-tag selectable active" data-genre="Ecchi">Ecchi</span>
+            <span class="genre-tag selectable active" data-genre="Fantasy">Fantasy</span>
+            <span class="genre-tag selectable" data-genre="Action">Action</span>
+            <span class="genre-tag selectable" data-genre="Supernatural">Supernatural</span>
+            <span class="genre-tag selectable" data-genre="Sci-Fi">Sci-Fi</span>
+            <span class="genre-tag selectable" data-genre="Drama">Drama</span>
+          </div>
+        </div>
+
+        <button type="submit" class="btn-primary">Save Encrypted Preferences</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Master PIN Security Modal -->
+  <div id="pin-modal" class="modal-overlay" style="display: flex;">
+    <div class="modal-card security-card">
+      <div class="security-icon">🔐</div>
+      <h2 id="pin-modal-title">Enter Master PIN</h2>
+      <p id="pin-modal-desc">Your watch history, cataloging, and bookmarks are encrypted with AES-256-GCM.</p>
+
+      <form id="pin-form">
+        <input type="password" id="pin-input" maxlength="16" placeholder="Enter Master PIN" autocomplete="off" autofocus required>
+        <div id="pin-confirm-container" style="display: none; margin-top: 10px;">
+          <input type="password" id="pin-confirm-input" maxlength="16" placeholder="Confirm PIN" autocomplete="off">
+        </div>
+        <p id="pin-error" class="error-text" style="display: none;"></p>
+        <button type="button" id="pin-exit-btn" class="btn-stealth" style="margin-top: 10px;" title="Close this window (click twice)">⏻ Exit</button>
+        <button type="button" id="pin-kill-btn" class="btn-danger" style="margin-top: 10px;" title="KILL SWITCH: destroy this browser profile and relaunch fresh (click twice)">🧨 Kill Switch</button>
+        <div class="pin-actions">
+          <button type="submit" id="pin-submit-btn" class="btn-primary">Unlock Vault</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Media Details & Streaming Modal -->
+  <div id="detail-modal" class="modal-overlay" style="display: none;">
+    <div class="modal-card detail-card">
+      <button id="detail-close-btn" class="modal-close-btn" title="Close (Esc)">✕</button>
+      
+      <!-- In-App Theater Player -->
+      <div id="inapp-player-container" style="display: none; margin-bottom: 20px;">
+        <div class="player-header">
+          <span id="player-title" style="font-size: 13px; font-weight: 600; color: #fff;">In-App Player</span>
+          <button id="close-player-btn" class="btn-stealth" style="padding: 2px 8px; font-size: 11px;">Close Player</button>
+        </div>
+        <iframe id="inapp-player-frame" src="" allow="autoplay; fullscreen; encrypted-media; picture-in-picture" allowfullscreen referrerpolicy="no-referrer" sandbox="allow-scripts allow-same-origin allow-forms allow-presentation" style="width: 100%; height: 400px; border-radius: 8px; border: 1px solid var(--border); background: #000; margin-top: 8px;"></iframe>
+      </div>
+
+      <div class="detail-layout">
+        <div class="detail-sidebar">
+          <img id="detail-poster" class="detail-poster" src="" alt="Cover">
+          <div class="detail-quick-stats">
+            <div class="stat-pill"><span id="detail-score">N/A</span> Score</div>
+            <div class="stat-pill"><span id="detail-episodes">N/A</span> Duration</div>
+          </div>
+          <button id="bookmark-toggle-btn" class="btn-secondary" style="width: 100%; margin-top: 10px;">
+            ❤️ Bookmark
+          </button>
+        </div>
+
+        <div class="detail-body">
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+            <h2 id="detail-title" style="margin: 0;">Title</h2>
+            <span id="uncensored-badge" class="badge-uncensored">⚡ Uncensored</span>
+          </div>
+          <div id="detail-genres" class="genre-tags"></div>
+          <p id="detail-synopsis" class="detail-synopsis"></p>
+
+          <div class="stream-mirrors-section">
+            <h3>⚡ Verified Playable Streaming Mirrors (Zero-Tracking / No Referrer)</h3>
+            <p class="section-subtext">Every mirror is tested live before display. Only 100% operational video links appear.</p>
+            <div id="stream-buttons-container" class="stream-buttons-grid"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+  <script src="share-ui.js"></script>
+  <script src="console.js"></script>
+</body>
+</html>

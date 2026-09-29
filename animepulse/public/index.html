@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AnimePulse — Streamability &amp; Availability Index</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <!-- Top Navigation & Header -->
+  <header class="navbar">
+    <div class="brand">
+      <div class="logo-icon">⚡</div>
+      <div class="brand-text">
+        <span class="brand-title">AnimePulse</span>
+        <span class="brand-subtitle">Popularity &amp; Open-Choice Stream Hub</span>
+      </div>
+    </div>
+
+    <!-- Search Box -->
+    <div class="search-container">
+      <span class="search-icon">🔍</span>
+      <input id="search-input" type="text" placeholder="Search anime title, franchise, or genre…" autocomplete="off">
+      <button id="search-clear-btn" class="search-clear" type="button" style="display: none;">✕</button>
+    </div>
+
+    <!-- Right Controls -->
+    <div class="header-controls">
+      <div id="outside-viewers-badge" class="outside-viewers-badge" title="External viewers currently logged via remote tunnel">
+        <span>👥 Outside Views:</span>
+        <strong id="outside-viewers-count">0</strong>
+      </div>
+      <button id="btn-share-link" class="btn-share" type="button" title="Copy remote tunnel link for family members">
+        🔗 Share Family Link
+      </button>
+      <button id="btn-media-dl" class="btn-laptop" type="button" title="Download any video/audio from a URL">📥 Media Downloader</button>
+      <button id="btn-display-pin" class="btn-laptop" title="Auto-detect connected monitors and choose screen coverage">💻 Display &amp; Pinning</button>
+      <button id="btn-close-window" class="btn-close-window" type="button" title="Close this AnimePulse window (the server keeps running)">✕ Close</button>
+    </div>
+  </header>
+
+  <!-- Feed Category Tabs -->
+  <nav class="category-tabs" role="tablist">
+    <button class="tab-btn active" data-mode="trending" role="tab">🔥 Trending Now</button>
+    <button class="tab-btn" data-mode="popular" role="tab">⭐ Most Popular</button>
+    <button class="tab-btn" data-mode="airing" role="tab">📡 Currently Airing</button>
+    <button class="tab-btn" data-mode="top" role="tab">✨ Top Rated</button>
+    <button class="tab-btn history-tab" data-mode="history" role="tab">
+      📜 Watch History <span id="history-badge" class="badge-counter">0</span>
+    </button>
+  </nav>
+
+  <!-- Genre Filter Chips -->
+  <div id="genre-bar" class="genre-bar">
+    <button class="genre-chip active" data-genre="All">All</button>
+    <button class="genre-chip" data-genre="Action">Action</button>
+    <button class="genre-chip" data-genre="Adventure">Adventure</button>
+    <button class="genre-chip" data-genre="Comedy">Comedy</button>
+    <button class="genre-chip" data-genre="Drama">Drama</button>
+    <button class="genre-chip" data-genre="Fantasy">Fantasy</button>
+    <button class="genre-chip" data-genre="Mystery">Mystery</button>
+    <button class="genre-chip" data-genre="Romance">Romance</button>
+    <button class="genre-chip" data-genre="Sci-Fi">Sci-Fi</button>
+    <button class="genre-chip" data-genre="Supernatural">Supernatural</button>
+    <button class="genre-chip" data-genre="Slice of Life">Slice of Life</button>
+  </div>
+
+  <!-- Main Content Area -->
+  <main class="content-container">
+    <!-- Active Section Header -->
+    <div class="section-header">
+      <h2 id="section-title">Trending Anime</h2>
+      <span id="results-count" class="results-tag">Loading catalog…</span>
+    </div>
+
+    <!-- Cards Grid -->
+    <div id="anime-grid" class="anime-grid">
+      <!-- Populated dynamically by app.js -->
+    </div>
+
+    <!-- History Container (Hidden by default, shown when history tab active) -->
+    <div id="history-container" class="history-view" style="display: none;">
+      <div class="history-toolbar">
+        <span class="history-info">Saved locally in <code>/home/dev/anime-pulse/data/history.json</code></span>
+        <button id="btn-sync-history" class="btn-sync-history" type="button">🔄 Sync Browser History</button>
+        <button id="btn-clear-history" class="btn-clear-history" type="button">Clear All History</button>
+      </div>
+      <div id="history-list" class="history-grid">
+        <!-- Populated dynamically -->
+      </div>
+    </div>
+
+    <!-- Loading Spinner & Error Banner -->
+    <div id="loading-state" class="state-banner">
+      <div class="spinner"></div>
+      <span>Querying live AniList metadata &amp; streamability index…</span>
+    </div>
+
+    <div id="empty-state" class="state-banner" style="display: none;">
+      <span>No titles found matching your filter criteria.</span>
+    </div>
+  </main>
+
+  <!-- Detail & Stream Modal Overlay -->
+  <div id="detail-modal" class="modal-backdrop" style="display: none;">
+    <div class="modal-card">
+      <button id="modal-close-btn" class="modal-close" type="button">✕</button>
+      
+      <!-- Modal Header Banner -->
+      <div id="modal-banner" class="modal-banner">
+        <div class="modal-banner-gradient"></div>
+        <div class="modal-title-box">
+          <h2 id="modal-title" class="modal-title"></h2>
+          <div id="modal-sub-title" class="modal-romaji"></div>
+        </div>
+      </div>
+
+      <div class="modal-body">
+        <div class="modal-sidebar">
+          <img id="modal-cover" class="modal-cover-img" src="" alt="Poster">
+          <div class="modal-quick-stats">
+            <div class="stat-pill"><span class="label">Score</span><span id="modal-score" class="val">--</span></div>
+            <div class="stat-pill"><span class="label">Episodes</span><span id="modal-episodes" class="val">--</span></div>
+            <div class="stat-pill"><span class="label">Status</span><span id="modal-status" class="val">--</span></div>
+            <div class="stat-pill"><span class="label">Studio</span><span id="modal-studio" class="val">--</span></div>
+          </div>
+        </div>
+
+        <div class="modal-content-area">
+          <!-- In-App Stream Theater Player -->
+          <div id="player-theater-box" class="player-theater-box" style="display: none;">
+            <div class="player-theater-header">
+              <div class="player-title-info">
+                <span class="player-badge">▶ IN-APP THEATER</span>
+                <span id="player-stream-title" class="player-stream-title">Now Streaming</span>
+              </div>
+              <div class="player-actions">
+                <button id="btn-player-prev-ep" class="btn-player-action" type="button" title="Previous Episode">◀ Prev Ep</button>
+                <button id="btn-player-next-ep" class="btn-player-action" type="button" title="Next Episode">Next Ep ▶</button>
+                <button id="btn-player-external" class="btn-player-action" type="button" title="Open in new window">⤢ Popout</button>
+                <button id="btn-player-close" class="btn-player-action" type="button" title="Close Player">✕ Close Player</button>
+              </div>
+            </div>
+            <div class="player-frame-wrapper">
+              <iframe id="player-frame" src="" allow="autoplay; fullscreen; encrypted-media; picture-in-picture" allowfullscreen referrerpolicy="no-referrer-when-downgrade"></iframe>
+              <video id="native-player" controls preload="auto" playsinline style="display:none; width: 100%; height: 100%; background: #000; border-radius: 8px;"></video>
+              <div id="completion-action-overlay" class="completion-overlay" style="display:none;">
+                <div class="completion-card">
+                  <div class="completion-badge">🎉 Episode Finished!</div>
+                  <h3 id="completion-title">Episode Complete</h3>
+                  <p class="completion-subtext">Zero-buffering playback completed. What would you like to do?</p>
+                  <div class="completion-buttons">
+                    <button id="btn-completion-trash" class="btn-action-trash" type="button">🗑️ Trash &amp; Free Space</button>
+                    <button id="btn-completion-save" class="btn-action-save" type="button">💾 Save to Library (Rewatch)</button>
+                    <button id="btn-completion-next" class="btn-action-next" type="button">▶ Next Episode</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="player-switch-bar">
+              <span class="player-switch-label">Switch Server:</span>
+              <div id="player-server-chips" class="player-server-chips"></div>
+            </div>
+          </div>
+
+          <!-- Availability Index Card -->
+          <div class="availability-card">
+            <div class="avail-header">
+              <span class="avail-title">📡 Streamability &amp; Availability Index</span>
+              <span class="avail-badge">Open-Choice Ready</span>
+            </div>
+            
+            <div class="avail-row">
+              <span class="avail-channel">🇯🇵 Subbed Audio:</span>
+              <span id="modal-sub-avail" class="avail-status success">1080p HD Available across all mirrors</span>
+            </div>
+            <div class="avail-row">
+              <span class="avail-channel">🎙️ Dubbed Audio:</span>
+              <span id="modal-dub-avail" class="avail-status info">Evaluating…</span>
+            </div>
+
+            <!-- Pre-Download & Buffer Section -->
+            <div class="download-section-box">
+              <div class="download-header-row">
+                <div class="download-header-title">
+                  <span class="dl-icon">⚡</span>
+                  <span class="dl-title">Zero-Buffering Pre-Download &amp; Cache</span>
+                </div>
+                <span class="dl-badge-pill">Local Playback • English Dub Prioritized • 0 Lag</span>
+              </div>
+              <p class="download-help-text">Download locally before watching to eliminate streaming stalls entirely. Automatically prioritizes and triple-verifies English Dubbed audio (falls back to sub only if dub is unavailable).</p>
+              <div class="download-button-row">
+                <button id="btn-prebuffer-ep" class="btn-prebuffer-action" type="button">
+                  <span class="btn-icon">⬇</span>
+                  <span id="btn-prebuffer-text">Pre-Buffer Current Ep (English Dub Prioritized)</span>
+                </button>
+                <button id="btn-download-series-modal" class="btn-prebuffer-secondary" type="button">
+                  <span class="btn-icon">📦</span>
+                  <span>Queue Season Batch (Dub)</span>
+                </button>
+              </div>
+
+              <!-- Live Download Progress Box -->
+              <div id="download-progress-box" class="download-progress-card" style="display: none;">
+                <div class="dl-progress-meta">
+                  <span id="dl-status-title" class="dl-status-title">Downloading Episode...</span>
+                  <span id="dl-meta-stats" class="dl-meta-stats">0% • -- MiB/s</span>
+                </div>
+                <div class="dl-progress-track">
+                  <div id="dl-progress-fill" class="dl-progress-fill" style="width: 0%;"></div>
+                </div>
+                <div class="dl-actions-bar">
+                  <button id="btn-play-cached-stream" class="btn-stream-cached" type="button" style="display: none;">▶ Watch Local 0-Lag Stream</button>
+                  <button id="btn-cancel-or-trash" class="btn-trash-cached" type="button">🗑️ Cancel &amp; Delete</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Open-Choice Server Launchers -->
+            <div class="server-options-header">Select Open-Choice Streaming Mirror:</div>
+            
+            <div class="server-category-heading">
+              <span class="category-icon">▶</span>
+              <span class="category-label">In-App HD Theater Players (Direct Iframe Playback • No Popups)</span>
+            </div>
+            <div id="modal-server-buttons-inapp" class="server-buttons-grid">
+              <!-- Populated dynamically with embed players -->
+            </div>
+
+            <div class="server-category-heading" style="margin-top: 14px;">
+              <span class="category-icon">🌐</span>
+              <span class="category-label">External Direct Browser Mirrors (Full Screen External Tab)</span>
+            </div>
+            <div id="modal-server-buttons-external" class="server-buttons-grid">
+              <!-- Populated dynamically with direct mirrors -->
+            </div>
+          </div>
+
+          <!-- Episode Navigation & Alternate Episode Choice -->
+          <div class="episode-navigator-card">
+            <div class="ep-nav-header">
+              <span class="ep-nav-title">🎬 Episode Navigator &amp; Alternate Choices</span>
+              <div class="ep-nav-controls">
+                <button id="btn-prev-ep" class="btn-ep-step" type="button">◀ Prev Ep</button>
+                <span id="active-ep-display" class="active-ep-badge">Episode 1</span>
+                <button id="btn-next-ep" class="btn-ep-step" type="button">Next Ep ▶</button>
+              </div>
+            </div>
+            <div class="ep-picker-box">
+              <span class="ep-picker-label">Select Any Episode in Catalog:</span>
+              <div id="ep-buttons-grid" class="ep-buttons-grid">
+                <!-- Dynamically populated episode buttons -->
+              </div>
+            </div>
+          </div>
+
+          <!-- Full series in watch order (walks prequel/sequel chain to the original) -->
+          <div id="franchise-section" class="counterparts-card" style="display: none;">
+            <div class="counterparts-header">
+              <span class="counterparts-title">📚 Full Series · Watch Order</span>
+              <span id="franchise-count" class="badge-counter">0</span>
+              <button id="franchise-original-btn" class="franchise-original-btn" type="button" style="display: none;">⏮ Go to original</button>
+            </div>
+            <div id="franchise-list" class="counterparts-grid">
+              <!-- Dynamically populated: original first, then each season/movie in order -->
+            </div>
+          </div>
+
+          <!-- Linked Counterpart Seasons & Franchises -->
+          <div id="counterparts-section" class="counterparts-card" style="display: none;">
+            <div class="counterparts-header">
+              <span class="counterparts-title">🔗 Linked Counterpart Seasons, Sequels &amp; Movies</span>
+              <span id="counterparts-count" class="badge-counter">0</span>
+            </div>
+            <div id="counterparts-list" class="counterparts-grid">
+              <!-- Dynamically populated counterpart cards -->
+            </div>
+          </div>
+
+          <!-- Watch Tracker Form -->
+          <div class="tracker-card">
+            <span class="tracker-title">📜 Track Watch Progress</span>
+            <div class="tracker-controls">
+              <label for="modal-ep-input">Episode:</label>
+              <input id="modal-ep-input" type="number" min="1" max="999" value="1">
+              <select id="modal-status-select">
+                <option value="Watching">Watching</option>
+                <option value="Completed">Completed</option>
+                <option value="Plan to Watch">Plan to Watch</option>
+              </select>
+              <button id="modal-save-history-btn" class="btn-save-progress" type="button">Save to History</button>
+            </div>
+          </div>
+
+          <!-- Synopsis -->
+          <div class="synopsis-box">
+            <h3>Synopsis</h3>
+            <p id="modal-synopsis" class="synopsis-text"></p>
+          </div>
+
+          <!-- Genres Tag List -->
+          <div id="modal-genres" class="genres-list"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Display & Monitor Pinning Modal Overlay -->
+  <div id="display-modal" class="modal-backdrop" style="display: none;">
+    <div class="modal-card display-pin-card">
+      <button id="display-modal-close-btn" class="modal-close" type="button">✕</button>
+
+      <div class="display-modal-header">
+        <div class="display-modal-icon">🖥️</div>
+        <div>
+          <h2 class="display-modal-title">Display &amp; Monitor Pinning</h2>
+          <p class="display-modal-subtitle">Auto-detect connected displays &amp; configure layout placement</p>
+        </div>
+      </div>
+
+      <div class="display-modal-body">
+        <!-- Target Monitor Selection -->
+        <div class="pin-section">
+          <label class="pin-section-label">1. Choose Detected Monitor:</label>
+          <div id="monitor-chips-grid" class="monitor-chips-grid">
+            <div class="loading-monitors">Detecting connected displays…</div>
+          </div>
+        </div>
+
+        <!-- Coverage Mode Selection -->
+        <div class="pin-section">
+          <label class="pin-section-label">2. Select Screen Coverage:</label>
+          <div id="coverage-options-grid" class="coverage-options-grid">
+            <button class="coverage-btn active" data-mode="full" data-side="left" type="button">
+              <span class="coverage-icon">⬛</span>
+              <span class="coverage-name">Full Screen</span>
+              <span class="coverage-desc">100% of display (Theater)</span>
+            </button>
+            <button class="coverage-btn" data-mode="partial" data-side="left" type="button">
+              <span class="coverage-icon">🌗</span>
+              <span class="coverage-name">Partial: Left Half</span>
+              <span class="coverage-desc">50% Left side dock</span>
+            </button>
+            <button class="coverage-btn" data-mode="partial" data-side="right" type="button">
+              <span class="coverage-icon">🌓</span>
+              <span class="coverage-name">Partial: Right Half</span>
+              <span class="coverage-desc">50% Right side dock</span>
+            </button>
+            <button class="coverage-btn" data-mode="pip" data-side="right" type="button">
+              <span class="coverage-icon">📱</span>
+              <span class="coverage-name">Compact Floating</span>
+              <span class="coverage-desc">Picture-in-picture floating</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Device Compatibility Note -->
+        <div class="device-compat-card">
+          <span class="compat-icon">🌐</span>
+          <div class="compat-text">
+            <strong>Universal Compatibility:</strong>
+            <p>On this Linux host, window geometry snaps automatically via X11 wmctrl. On remote family devices (iPhone, iPad, Android, Windows, Mac), Full Screen activates responsive HTML5 theater mode.</p>
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="display-modal-actions">
+          <button id="btn-execute-pin" class="btn-pin-confirm" type="button">📌 Apply &amp; Pin Window</button>
+          <button id="btn-display-cancel" class="btn-pin-cancel" type="button">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div id="toast" class="toast">Action Executed</div>
+
+  <script src="/app.js"></script>
+  <script src="/media.js"></script>
+  <script src="/console.js"></script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+{
+  "name": "vault-pulse",
+  "version": "1.0.0",
+  "description": "Anonymous, private, encrypted adult media discovery, cataloging, and streaming vault",
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "undici": "^7.30.0"
+  }
+}
