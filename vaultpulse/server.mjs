@@ -344,7 +344,10 @@ const HENTAI_KINK_GROUPS = [
 ];
 
 const REAL_KINK_GROUPS = [
-  { group: 'Family & Taboo', items: [['step fantasy', '🏡 Step Fantasy', 'step fantasy roleplay american'], ['stepsister', '👭 Stepsister', 'step sister roleplay american'], ['sister', '👭 Sister', 'sister roleplay american'], ['stepmom', '👩 Stepmom', 'step mom roleplay american'], ['stepbrother', '🧑 Stepbrother', 'step brother roleplay american']] },
+  { group: 'Family & Taboo', items: [['step fantasy', '🏡 Step Fantasy', 'step fantasy roleplay american'], ['stepsister', '👭 Stepsister', 'step sister roleplay american'], ['sister', '👭 Sister', 'sister roleplay american'], ['stepmom', '👩 Stepmom', 'step mom roleplay american'], ['stepbrother', '🧑 Stepbrother', 'step brother roleplay american'], ['brother', '🧑 Brother', 'brother sister roleplay american']] },
+  // Adult-performer categories only: labels and search phrases carry the 18+ qualifier, and every
+  // result still passes isCleanAdultContent()'s MINOR_SAFETY_REGEX.
+  { group: 'Amateur & 18+', items: [['teen 18+', '🎓 Teen (18+)', 'teen 18 american'], ['barely legal', '🔞 Barely Legal (18+)', 'barely legal 18 american'], ['homemade', '🏠 Homemade', 'homemade amateur american couple']] },
   { group: 'Fetish & BDSM', items: [['bdsm', '⛓️ BDSM', 'bdsm bondage american'], ['bondage', '🪢 Bondage', 'bondage rope american'], ['femdom', '👠 Femdom', 'femdom domination american'], ['feet', '🦶 Foot Fetish', 'foot fetish feet american'], ['latex', '🖤 Latex & Leather', 'latex leather fetish american'], ['heels', '👠 Heels & Stockings', 'high heels stockings american'], ['lingerie', '🩱 Lingerie', 'lingerie stockings american'], ['spanking', '🖐️ Spanking', 'spanking american'], ['facesitting', '🪑 Facesitting', 'facesitting american'], ['strapon', '🪢 Strap-on', 'strapon female domination american'], ['roleplay', '🎭 Roleplay', 'roleplay american couple'], ['cosplay', '🦸 Cosplay', 'cosplay american costume']] },
   { group: 'Relationship Dynamics', items: [['cuckold', '👁️ Cuckold & Hotwife', 'cuckold hotwife american'], ['swingers', '🔄 Swingers', 'swingers american couple'], ['gangbang', '👥 Gangbang', 'gangbang american'], ['orgy', '🎉 Orgy', 'orgy american party']] },
   { group: 'Exhibition', items: [['public', '🌆 Public', 'public flashing american'], ['exhibitionist', '🎭 Exhibitionist', 'exhibitionist outdoor american']] },
