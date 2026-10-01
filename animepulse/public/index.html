@@ -48,6 +48,7 @@
     <button class="tab-btn history-tab" data-mode="history" role="tab">
       📜 Watch History <span id="history-badge" class="badge-counter">0</span>
     </button>
+    <button class="tab-btn downloads-tab" data-mode="downloads" role="tab">📁 Downloads</button>
   </nav>
 
   <!-- Genre Filter Chips -->
@@ -88,6 +89,15 @@
       <div id="history-list" class="history-grid">
         <!-- Populated dynamically -->
       </div>
+    </div>
+
+    <!-- Downloads container (hidden by default, shown when the Downloads tab is active) -->
+    <div id="downloads-container" class="downloads-view" style="display: none;">
+      <div class="downloads-toolbar">
+        <span class="history-info">Read-only view of your saved and downloading files, grouped by category</span>
+        <button id="btn-refresh-downloads" class="btn-sync-history" type="button">🔄 Refresh</button>
+      </div>
+      <div id="downloads-tree" class="downloads-tree"></div>
     </div>
 
     <!-- Loading Spinner & Error Banner -->

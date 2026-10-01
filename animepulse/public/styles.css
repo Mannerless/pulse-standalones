@@ -1972,3 +1972,51 @@ body {
   cursor: pointer;
 }
 .franchise-original-btn:hover { background: rgba(59, 130, 246, 0.35); }
+
+/* ---- Downloads view ---- */
+.downloads-view { flex-direction: column; gap: 12px; }
+.downloads-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.downloads-tree { display: flex; flex-direction: column; gap: 10px; }
+.dl-cat, .dl-folder { border: 1px solid rgba(255,255,255,.10); border-radius: 10px; background: rgba(255,255,255,.03); }
+.dl-cat > summary, .dl-folder > summary { cursor: pointer; padding: 10px 12px; display: flex; align-items: center; gap: 10px; list-style: none; }
+.dl-cat > summary::-webkit-details-marker, .dl-folder > summary::-webkit-details-marker { display: none; }
+.dl-cat > summary { font-weight: 700; font-size: 1.02rem; }
+.dl-folder { margin: 4px 0 0 0; background: rgba(255,255,255,.02); }
+.dl-children { padding: 4px 10px 10px 22px; display: flex; flex-direction: column; gap: 2px; }
+.dl-file { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-radius: 8px; }
+.dl-file:hover, .dl-folder > summary:hover, .dl-cat > summary:hover { background: rgba(255,255,255,.06); }
+.dl-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dl-meta { color: var(--text-secondary, #9aa4b2); font-size: .85rem; white-space: nowrap; }
+.dl-ico { width: 1.4em; text-align: center; }
+.dl-chip { font-size: .78rem; padding: 2px 9px; border-radius: 999px; background: rgba(255,255,255,.08); }
+.dl-chip.dl-locked { background: rgba(255,90,90,.20); color: #ff9c9c; }
+.dl-chip.dl-ready { background: rgba(80,200,120,.20); color: #8be3ab; }
+.dl-note { color: var(--text-secondary, #9aa4b2); font-size: .9rem; padding: 6px 10px; white-space: pre-line; word-break: break-all; }
+.dl-err { color: #ff9c9c; }
+.dl-banner { padding: 10px 14px; border-radius: 10px; background: rgba(255,200,80,.12); border: 1px solid rgba(255,200,80,.35); }
+
+/* ---- Downloads player ---- */
+.dl-playable { cursor: pointer; }
+.dl-playable:hover .dl-name { text-decoration: underline; }
+.dl-playable .dl-ico { color: #4ade80; }
+.dl-player { position: fixed; inset: 0; z-index: 9999; background: rgba(0,0,0,.88); display: flex; align-items: center; justify-content: center; }
+.dl-player-box { width: min(1100px, 94vw); background: #0b0f17; border: 1px solid rgba(255,255,255,.12); border-radius: 12px; padding: 10px; }
+.dl-player-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 4px 6px 10px; }
+.dl-player-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.dl-player-close { background: rgba(255,90,90,.18); color: #ffb0b0; border: 1px solid rgba(255,90,90,.45); border-radius: 8px; padding: 6px 12px; cursor: pointer; }
+.dl-player-media { width: 100%; max-height: 78vh; background: #000; border-radius: 8px; }
+
+/* ---- Watch status labels ---- */
+.btn-ep-choice { position: relative; }
+.btn-ep-choice .ep-check { position: absolute; right: 2px; top: 1px; font-size: .72rem; font-weight: 900; line-height: 1; color: #22c55e; text-shadow: 0 0 3px rgba(0,0,0,.85); }
+.btn-ep-choice .ep-dot { position: absolute; right: 3px; top: 1px; font-size: .6rem; line-height: 1; color: #38bdf8; }
+.btn-ep-choice .ep-pct { position: absolute; right: 2px; bottom: 1px; font-size: .52rem; line-height: 1; color: #ffd28a; }
+.btn-ep-choice.ep-done { box-shadow: inset 0 0 0 1px rgba(34,197,94,.55); }
+.btn-ep-choice.ep-partial { box-shadow: inset 0 0 0 2px rgba(255,190,80,.75); }
+.btn-ep-choice.ep-current:not(.active) { box-shadow: inset 0 0 0 2px rgba(56,189,248,.7); }
+.ep-legend { color: var(--text-secondary, #9aa4b2); font-size: .8rem; margin-top: 8px; }
+.dl-badge-slot { min-width: 7.5em; text-align: right; }
+.dl-badge { font-size: .76rem; padding: 2px 9px; border-radius: 999px; white-space: nowrap; }
+.dl-badge-completed { background: rgba(80,200,120,.20); color: #8be3ab; }
+.dl-badge-partial { background: rgba(255,190,80,.20); color: #ffd28a; }
+.dl-badge-opened { background: rgba(120,170,255,.20); color: #a9c7ff; }

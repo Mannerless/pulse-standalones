@@ -12,13 +12,14 @@ const LOCAL_YTDLP = path.join(__dirname, '.venv', 'bin', 'yt-dlp');
 const YTDLP = fs.existsSync(LOCAL_YTDLP) ? LOCAL_YTDLP : 'yt-dlp'; // venv copy is newer than the distro package
 const VIDEO_EXT = new Set(['.mp4', '.mkv', '.webm', '.mov', '.m4v']);
 const AUDIO_EXT = new Set(['.mp3', '.m4a', '.opus', '.ogg', '.flac', '.wav']);
+import { isMounted, EXTERNAL_ROOT } from './mounts.mjs';
 const MIME = { '.mp4': 'video/mp4', '.m4v': 'video/mp4', '.mkv': 'video/x-matroska', '.webm': 'video/webm',
   '.mov': 'video/quicktime', '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.opus': 'audio/ogg',
   '.ogg': 'audio/ogg', '.flac': 'audio/flac', '.wav': 'audio/wav' };
 
 export function getMediaDir() {
   if (process.env.MEDIA_DIR) return process.env.MEDIA_DIR;
-  if (fs.existsSync('/media/dev/PHONE_3D')) return '/media/dev/PHONE_3D/Media';
+  if (isMounted(EXTERNAL_ROOT)) return path.join(EXTERNAL_ROOT, 'Media');   // only when really mounted
   return path.join(__dirname, 'data', 'media');
 }
 

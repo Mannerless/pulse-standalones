@@ -22,6 +22,8 @@
   const resultsCount = document.getElementById('results-count');
   const animeGrid = document.getElementById('anime-grid');
   const historyContainer = document.getElementById('history-container');
+  const downloadsContainer = document.getElementById('downloads-container');
+  const downloadsTree = document.getElementById('downloads-tree');
   const historyListEl = document.getElementById('history-list');
   const historyBadge = document.getElementById('history-badge');
   const btnClearHistory = document.getElementById('btn-clear-history');
@@ -211,7 +213,136 @@
     pagerEl.style.display = 'flex';
   }
 
+  // ---------- Downloads view (read-only file tree). Names are rendered with textContent, never innerHTML. ----------
+  const fmtSize = (n) => (n >= 1073741824 ? (n / 1073741824).toFixed(2) + ' GB' : n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : n >= 1024 ? Math.round(n / 1024) + ' KB' : (n || 0) + ' B');
+  const fmtDate = (ms) => { try { return new Date(ms).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }); } catch (_) { return ''; } };
+  const mk = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+
+  async function fetchTree(cat, rel) {
+    const r = await fetch(`/api/files/tree?cat=${encodeURIComponent(cat)}&path=${encodeURIComponent(rel || '')}`);
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || j.success === false) throw new Error(j.error || j.message || `HTTP ${r.status}`);
+    return j;
+  }
+
+  // Watched / partial / completed badge for a playable file row
+  function setBadge(slot, st) {
+    slot.textContent = '';
+    if (!st || !st.state || st.state === 'unwatched') return;
+    const pct = Math.round((st.pct || 0) * 100);
+    const b = mk('span', `dl-badge dl-badge-${st.state}`, st.state === 'completed' ? '✓ Completed' : st.state === 'partial' ? `◐ ${pct}% watched` : '● Watched');
+    slot.appendChild(b);
+  }
+
+  // In-app player for files listed in the Downloads view (streams from /api/files/stream, supports seeking and .vtt subtitles).
+  function openPlayer(cat, en, siblings, onState) {
+    const old = document.getElementById('dl-player'); if (old) old.remove();
+    const overlay = mk('div', 'dl-player'); overlay.id = 'dl-player';
+    const box = mk('div', 'dl-player-box');
+    const bar = mk('div', 'dl-player-bar');
+    bar.appendChild(mk('span', 'dl-player-title', en.name));
+    const closeBtn = mk('button', 'dl-player-close', '✕ Close'); closeBtn.type = 'button'; bar.appendChild(closeBtn);
+    const media = document.createElement(en.kind === 'audio' ? 'audio' : 'video');
+    media.controls = true; media.autoplay = true; media.className = 'dl-player-media';
+    const url = (p) => `/api/files/stream?cat=${encodeURIComponent(cat.id)}&path=${encodeURIComponent(p)}`;
+    media.src = url(en.path);
+    const stem = (n) => n.replace(/\.[^.]+$/, '').toLowerCase();
+    const sub = (siblings || []).find((x) => x.type === 'file' && x.ext === '.vtt' && stem(x.name) === stem(en.name));
+    if (sub && en.kind === 'video') {
+      const t = document.createElement('track'); t.kind = 'subtitles'; t.label = 'Subtitles'; t.srclang = 'en'; t.default = true; t.src = url(sub.path); media.appendChild(t);
+    }
+    let lastSent = 0;                                                  // save progress: every ~10s, on pause, on end, and on close
+    const send = () => {
+      const d = media.duration, t = media.currentTime;
+      if (!isFinite(d) || d <= 0 || t < 1) return;
+      fetch('/api/files/progress', { method: 'POST', headers: { 'Content-Type': 'application/json' }, keepalive: true, body: JSON.stringify({ cat: cat.id, path: en.path, position: t, duration: d }) })
+        .then((r) => r.json()).then((j) => { if (j && j.success && onState) onState(j.state === 'none' ? null : { state: j.state, pct: j.pct, position: j.position || 0 }); }).catch(() => {});
+    };
+    media.addEventListener('timeupdate', () => { const n = Date.now(); if (n - lastSent > 10000) { lastSent = n; send(); } });
+    media.addEventListener('pause', send); media.addEventListener('ended', send);
+    if (en.watch && en.watch.state === 'partial' && en.watch.position > 10) {       // resume where you left off
+      media.addEventListener('loadedmetadata', () => { try { media.currentTime = Math.max(0, en.watch.position - 3); } catch (_) {} }, { once: true });
+    }
+    const msg = mk('div', 'dl-note dl-err'); msg.style.display = 'none';
+    media.addEventListener('error', () => { msg.style.display = 'block'; msg.textContent = 'This browser could not play this file (format not supported).'; });
+    const onKey = (ev) => { if (ev.key === 'Escape') closeAll(); };
+    const closeAll = () => { try { send(); media.pause(); media.removeAttribute('src'); media.load(); } catch (_) {} overlay.remove(); document.removeEventListener('keydown', onKey); };
+    closeBtn.addEventListener('click', closeAll);
+    overlay.addEventListener('click', (ev) => { if (ev.target === overlay) closeAll(); });
+    document.addEventListener('keydown', onKey);
+    box.appendChild(bar); box.appendChild(media); box.appendChild(msg); overlay.appendChild(box); document.body.appendChild(overlay);
+  }
+
+  function fillFolder(body, cat, rel) {
+    body.textContent = '';
+    body.appendChild(mk('div', 'dl-note', 'Loading…'));
+    fetchTree(cat.id, rel).then((data) => {
+      body.textContent = '';
+      if (data.state !== 'ready') { body.appendChild(mk('div', 'dl-note', data.message)); return; }
+      if (!data.entries.length) { body.appendChild(mk('div', 'dl-note', 'This folder is empty.')); return; }
+      data.entries.forEach((en) => {
+        if (en.type === 'dir') {
+          const d = document.createElement('details'); d.className = 'dl-folder';
+          const sm = document.createElement('summary');
+          sm.appendChild(mk('span', 'dl-ico', '📁'));
+          sm.appendChild(mk('span', 'dl-name', en.label || en.name));
+          if (en.label) sm.title = en.name;
+          sm.appendChild(mk('span', 'dl-meta', en.items == null ? '' : `${en.items} item${en.items === 1 ? '' : 's'}`));
+          d.appendChild(sm);
+          const inner = mk('div', 'dl-children'); d.appendChild(inner);
+          let loaded = false;
+          d.addEventListener('toggle', () => { if (d.open && !loaded) { loaded = true; fillFolder(inner, cat, en.path); } });
+          body.appendChild(d);
+        } else {
+          const playable = en.kind === 'video' || en.kind === 'audio';
+          const slot = mk('span', 'dl-badge-slot'); if (playable) setBadge(slot, en.watch);
+          const row = mk('div', playable ? 'dl-file dl-playable' : 'dl-file');
+          row.appendChild(mk('span', 'dl-ico', playable ? '▶' : en.kind === 'subs' ? '💬' : '📄'));
+          if (playable) {
+            row.tabIndex = 0; row.setAttribute('role', 'button'); row.title = 'Click to play';
+            const play = () => openPlayer(cat, en, data.entries, (st) => { en.watch = st; setBadge(slot, st); });
+            row.addEventListener('click', play);
+            row.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); play(); } });
+          }
+          row.appendChild(mk('span', 'dl-name', en.name));
+          row.appendChild(mk('span', 'dl-meta', `${fmtSize(en.size)} · ${fmtDate(en.mtime)}`));
+          row.appendChild(slot);
+          body.appendChild(row);
+        }
+      });
+      if (data.truncated) body.appendChild(mk('div', 'dl-note', 'Showing the first 500 items.'));
+    }).catch((err) => { body.textContent = ''; body.appendChild(mk('div', 'dl-note dl-err', `Could not read this folder: ${err.message}`)); });
+  }
+
+  async function renderDownloadsView() {
+    sectionTitle.textContent = '📁 Downloads';
+    animeGrid.style.display = 'none'; emptyState.style.display = 'none'; loadingState.style.display = 'none';
+    historyContainer.style.display = 'none'; hidePager();
+    downloadsContainer.style.display = 'flex';
+    downloadsTree.textContent = '';
+    downloadsTree.appendChild(mk('div', 'dl-note', 'Loading categories…'));
+    try {
+      const r = await fetch('/api/files/categories'); const j = await r.json();
+      if (!r.ok || !j.success) throw new Error(j.error || `HTTP ${r.status}`);
+      downloadsTree.textContent = '';
+      resultsCount.textContent = `${j.categories.length} categories`;
+      if (j.categories.some((c) => c.state === 'locked')) downloadsTree.appendChild(mk('div', 'dl-banner', '🔒 The external drive is not mounted (locked). Unlock it in the file manager, then press Refresh. Drive categories stay empty until then.'));
+      j.categories.forEach((c) => {
+        const d = document.createElement('details'); d.className = 'dl-cat';
+        const sm = document.createElement('summary');
+        sm.appendChild(mk('span', 'dl-ico', c.icon)); sm.appendChild(mk('span', 'dl-name', c.label));
+        sm.appendChild(mk('span', `dl-chip dl-${c.state}`, c.state === 'ready' ? `${c.items == null ? 0 : c.items} items` : c.state === 'locked' ? 'Locked' : 'Empty'));
+        d.appendChild(sm);
+        const body = mk('div', 'dl-children'); body.appendChild(mk('div', 'dl-note', `${c.note}\n${c.root}`)); d.appendChild(body);
+        let loaded = false;
+        d.addEventListener('toggle', () => { if (d.open && !loaded) { loaded = true; fillFolder(body, c, ''); } });
+        downloadsTree.appendChild(d);
+      });
+    } catch (err) { downloadsTree.textContent = ''; downloadsTree.appendChild(mk('div', 'dl-note dl-err', `Could not load downloads: ${err.message}`)); }
+  }
+
   async function loadFeed() {
+    if (currentMode === 'downloads') { renderDownloadsView(); return; }
     if (currentMode === 'history') {
       renderHistoryView();
       return;
@@ -221,6 +352,7 @@
     emptyState.style.display = 'none';
     animeGrid.style.display = 'none';
     historyContainer.style.display = 'none';
+    downloadsContainer.style.display = 'none';
     hidePager();
 
     const modeLabels = {
@@ -376,6 +508,7 @@
     animeGrid.style.display = 'none';
     emptyState.style.display = 'none';
     loadingState.style.display = 'none';
+    downloadsContainer.style.display = 'none';
     historyContainer.style.display = 'flex';
 
     historyListEl.innerHTML = '';
@@ -447,6 +580,7 @@
 
   function selectEpisode(epNum, shouldSave = false) {
     if (!currentModalAnime) return;
+    decorateEpisodes(currentModalAnime.id);
     const total = currentModalAnime.episodes || 999;
     const targetEp = Math.max(1, Math.min(total, parseInt(epNum, 10) || 1));
     currentSelectedEp = targetEp;
@@ -1010,8 +1144,52 @@
       btn.setAttribute('data-ep', i);
       btn.textContent = i;
       btn.addEventListener('click', () => selectEpisode(i, true));
+      btn.addEventListener('contextmenu', async (ev) => {             // right-click: mark completed / unwatched by hand
+        ev.preventDefault();
+        const wasDone = btn.classList.contains('ep-done');
+        try {
+          const r = await fetch('/api/watch-mark', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ animeId: anime.id, episode: i, state: wasDone ? 'clear' : 'completed' }) });
+          const j = await r.json();
+          if (j && j.success) { showToast(wasDone ? `Episode ${i} marked unwatched` : `Episode ${i} marked watched`); decorateEpisodes(anime.id); }
+        } catch (_) { showToast('Could not save that mark'); }
+      });
       epButtonsGrid.appendChild(btn);
     }
+    if (!document.getElementById('ep-legend')) {
+      const lg = document.createElement('div'); lg.id = 'ep-legend'; lg.className = 'ep-legend';
+      lg.textContent = '✓ watched · plain number = not watched · 45% = partly watched · ● current / next up · right-click an episode to mark it watched or unwatched';
+      epButtonsGrid.insertAdjacentElement('afterend', lg);
+    }
+    decorateEpisodes(anime.id);
+  }
+
+  // Episode button labels: green check (top-right) = watched, plain number = unwatched, dot (top-right) = current / next up, amber % = partly watched
+  function setEpStatus(btn, st, isCurrent) {
+    btn.classList.remove('ep-done', 'ep-partial', 'ep-opened', 'ep-current');
+    btn.querySelectorAll('.ep-check, .ep-dot, .ep-pct').forEach((n) => n.remove());
+    btn.removeAttribute('title');
+    let tip = '';
+    if (st && st.state === 'completed') {
+      btn.classList.add('ep-done'); btn.appendChild(mk('span', 'ep-check', '✓'));
+      tip = st.inferred ? 'Assumed watched (you opened a later episode). Right-click to mark unwatched.' : 'Watched. Right-click to mark unwatched.';
+    } else if (st && st.state === 'partial') {
+      const pct = Math.round((st.pct || 0) * 100);
+      btn.classList.add('ep-partial'); btn.appendChild(mk('span', 'ep-pct', `${pct}%`));
+      tip = `Watched partially: ${pct}%. Right-click to mark watched.`;
+    }
+    if (isCurrent) { btn.classList.add('ep-current'); btn.appendChild(mk('span', 'ep-dot', '●')); tip = (tip ? tip + ' ' : '') + 'Current / next up.'; }
+    if (!st && !isCurrent) tip = 'Right-click to mark watched.';
+    if (tip) btn.title = tip;
+  }
+  async function decorateEpisodes(animeId) {
+    try {
+      const r = await fetch(`/api/watch-status?animeId=${encodeURIComponent(animeId)}`); const j = await r.json();
+      if (!j || !j.success || !epButtonsGrid) return;
+      epButtonsGrid.querySelectorAll('.btn-ep-choice').forEach((b) => {
+        const ep = parseInt(b.getAttribute('data-ep'), 10);
+        setEpStatus(b, j.statuses[ep], j.current === ep);
+      });
+    } catch (_) {}
   }
 
   // Full series in watch order: original first, current entry highlighted, one click to any entry.
@@ -1417,6 +1595,9 @@
         loadFeed();
       });
     });
+
+    const btnRefreshDl = document.getElementById('btn-refresh-downloads');
+    if (btnRefreshDl) btnRefreshDl.addEventListener('click', () => renderDownloadsView());
 
     // Genre Chips
     genreChips.forEach((chip) => {

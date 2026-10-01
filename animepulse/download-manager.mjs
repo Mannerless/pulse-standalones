@@ -5,6 +5,7 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { resolveEpisode } from './hianime-resolver.mjs';
 
+import { isMounted, EXTERNAL_ROOT } from './mounts.mjs';
 const execFileAsync = util.promisify(execFile);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -13,10 +14,13 @@ const CACHE_DIR = path.join(__dirname, 'data', 'cache');
 const LIBRARY_DIR = path.join(__dirname, 'data', 'library');
 const SAVED_METADATA_FILE = path.join(__dirname, 'data', 'saved_library.json');
 
-// Storage target fallback
+// Storage target: the external drive only when it is REALLY mounted (a bare mountpoint folder exists even when the drive is locked)
 function getTargetLibraryDir() {
-  if (fs.existsSync('/media/dev/PHONE_3D/Anime')) return '/media/dev/PHONE_3D/Anime';
-  if (fs.existsSync('/home/dev/storage/Anime')) return '/home/dev/storage/Anime';
+  if (isMounted(EXTERNAL_ROOT)) return path.join(EXTERNAL_ROOT, 'Anime');
+  try {
+    const st = '/home/dev/storage/Anime';
+    if (fs.existsSync(st) && !fs.realpathSync(st).startsWith(EXTERNAL_ROOT + path.sep)) return st;
+  } catch (_) {}
   return LIBRARY_DIR;
 }
 

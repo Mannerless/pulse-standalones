@@ -14,6 +14,7 @@ import {
   streamSubtitleFile,
   cleanupOrphanedParts,
 } from './download-manager.mjs';
+import { listCategories, listDir, openFile, watchKeyForFile } from './file-tree.mjs';
 import { startMediaDownload, listJobs, mediaAction, streamMediaFile, checkTools, getMediaDir } from './media-downloader.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -103,6 +104,35 @@ function savePlayback(all) {
   const tmp = `${PLAYBACK_FILE}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(all));
   fs.renameSync(tmp, PLAYBACK_FILE);
+}
+
+// ---- Watch status: persistent per-episode state (unlike playback.json, which forgets an episode once it is finished) ----
+const WATCH_FILE = path.join(DATA_DIR, 'watch-status.json');
+function loadWatch() { try { return JSON.parse(fs.readFileSync(WATCH_FILE, 'utf8')) || {}; } catch { return {}; } }
+function saveWatch(all) {
+  const keys = Object.keys(all);
+  if (keys.length > 4000) keys.sort((a, b) => String(all[a].updatedAt).localeCompare(String(all[b].updatedAt))).slice(0, keys.length - 4000).forEach((k) => { delete all[k]; });
+  const tmp = `${WATCH_FILE}.tmp`; fs.writeFileSync(tmp, JSON.stringify(all)); fs.renameSync(tmp, WATCH_FILE);
+}
+// Turn a progress sample into a state. Completed is sticky: re-watching part of it later does not erase it.
+function recordWatch(key, position, duration) {
+  const pos = Number(position) || 0, dur = Number(duration) || 0;
+  if (!key || pos < 0) return null;
+  const all = loadWatch(), prev = all[key], now = new Date().toISOString();
+  const pct = dur > 0 ? Math.min(1, pos / dur) : 0;
+  const done = dur > 0 && (pct >= 0.9 || (dur - pos <= 90 && pct >= 0.5));      // 90% through, or only the credits are left
+  let entry = null;
+  if (done) entry = { state: 'completed', pct: 1, position: Math.round(pos), duration: Math.round(dur), updatedAt: now };
+  else if (pos >= 10 && !(prev && prev.state === 'completed')) entry = { state: 'partial', pct: Math.round(pct * 1000) / 1000, position: Math.round(pos * 10) / 10, duration: Math.round(dur), updatedAt: now };
+  if (!entry) return prev || null;
+  all[key] = entry; saveWatch(all); return entry;
+}
+function markWatch(key, state) {
+  const all = loadWatch();
+  if (state === 'completed') all[key] = { state: 'completed', pct: 1, manual: true, updatedAt: new Date().toISOString() };
+  else if (/^\d+_\d+$/.test(key)) all[key] = { state: 'unwatched', manual: true, updatedAt: new Date().toISOString() };   // episode keys: explicit override beats the "earlier than last watched" inference
+  else delete all[key];
+  saveWatch(all); return all[key] && all[key].state !== 'unwatched' ? all[key] : null;
 }
 
 function saveHistory(history) {
@@ -1147,6 +1177,79 @@ const server = http.createServer(async (req, res) => {
     // -----------------------------------------------------------------------
     // API: General media downloader (yt-dlp, any URL)
     // -----------------------------------------------------------------------
+    // -----------------------------------------------------------------------
+    // API: Downloads view (read-only file tree). Owner-only: never served through the public tunnel / a proxy.
+    // -----------------------------------------------------------------------
+    if (pathname === '/api/files/categories' || pathname === '/api/files/tree' || pathname === '/api/files/stream' || pathname === '/api/files/progress' || pathname === '/api/watch-status' || pathname === '/api/watch-mark') {
+      const h = req.headers;
+      const hostName = String(h.host || '').replace(/:\d+$/, '');
+      const viaProxy = h['x-forwarded-for'] || h['x-forwarded-host'] || h['cf-connecting-ip'] || h['x-real-ip'] || h['forwarded'];
+      const localHost = /^(127\.0\.0\.1|localhost|\[::1\])$/.test(hostName);
+      if (req.isPublic || viaProxy || !localHost) { sendError(403, 'File view is local-only'); return; }
+      const postOnly = pathname === '/api/files/progress' || pathname === '/api/watch-mark';
+      if (req.method !== (postOnly ? 'POST' : 'GET')) { sendError(405, postOnly ? 'POST only' : 'GET only'); return; }
+      const readBody = async () => { let b = ''; for await (const c of req) { b += c; if (b.length > 4096) break; } try { return JSON.parse(b || '{}'); } catch { return null; } };
+      try {
+        if (pathname === '/api/watch-status') {                           // episode -> {state, pct} for one show
+          const id = String(parsedUrl.searchParams.get('animeId') || '').trim();
+          if (!/^\d{1,9}$/.test(id)) { sendError(400, 'Invalid animeId'); return; }
+          const out = {}, blocked = new Set();
+          for (const [k, v] of Object.entries(loadWatch())) {
+            if (!k.startsWith(id + '_')) continue;
+            const tail = k.slice(id.length + 1); if (!/^\d+$/.test(tail)) continue;
+            const ep = parseInt(tail, 10);
+            if (v.state === 'unwatched') { blocked.add(ep); continue; }
+            out[ep] = { state: v.state, pct: v.pct, manual: !!v.manual, inferred: false };
+          }
+          // Outside-player history: episodes before the last one you opened are assumed watched (you can undo with a right-click).
+          let current = null;
+          const h0 = getHistoryRaw().find((x) => String(x.id) === id);
+          const last = h0 ? Math.min(parseInt(h0.lastEpisodeWatched, 10) || 0, 2000) : 0;
+          if (last >= 1) {
+            for (let e = 1; e < last; e++) if (!out[e] && !blocked.has(e)) out[e] = { state: 'completed', pct: 1, manual: false, inferred: true };
+            if (!out[last] && !blocked.has(last)) out[last] = { state: 'opened', pct: null, manual: false, inferred: true };
+            current = out[last] && out[last].state === 'completed' ? last + 1 : last;     // finished the last one -> next up; else continue it
+          }
+          sendJson(200, { success: true, statuses: out, current }); return;
+        }
+        if (pathname === '/api/watch-mark') {                             // manual: mark an episode completed, or clear it
+          const b = await readBody(); if (!b) { sendError(400, 'Invalid JSON body'); return; }
+          const key = b.cat ? watchKeyForFile(String(b.cat), String(b.path || '')) : playbackKey(b.animeId, b.episode);
+          if (!key || !['completed', 'clear'].includes(b.state)) { sendError(400, 'Invalid mark'); return; }
+          const e = markWatch(key, b.state); sendJson(200, { success: true, state: e ? e.state : 'none', pct: e ? e.pct : 0 }); return;
+        }
+        if (pathname === '/api/files/progress') {                         // progress from the Downloads player
+          const b = await readBody(); if (!b) { sendError(400, 'Invalid JSON body'); return; }
+          openFile(String(b.cat || ''), String(b.path || ''));            // validates category + path + type
+          const key = watchKeyForFile(String(b.cat), String(b.path));
+          const e = recordWatch(key, b.position, b.duration); sendJson(200, { success: true, state: e ? e.state : 'none', pct: e ? e.pct : 0, position: e ? (e.position || 0) : 0 }); return;
+        }
+        if (pathname === '/api/files/stream') {                              // range-capable streaming so the player can seek
+          const f = openFile(parsedUrl.searchParams.get('cat') || '', parsedUrl.searchParams.get('path') || '');
+          const hdr = { 'Content-Type': f.mime, 'Accept-Ranges': 'bytes', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' };
+          let start = 0, end = f.size - 1, code = 200;
+          const m = /^bytes=(\d*)-(\d*)$/.exec(String(req.headers.range || ''));
+          if (m && (m[1] !== '' || m[2] !== '')) {
+            if (m[1] === '') { start = Math.max(0, f.size - parseInt(m[2], 10)); }
+            else { start = parseInt(m[1], 10); if (m[2] !== '') end = Math.min(end, parseInt(m[2], 10)); }
+            if (!(start <= end) || start >= f.size) { res.writeHead(416, { 'Content-Range': `bytes */${f.size}` }); res.end(); return; }
+            code = 206; hdr['Content-Range'] = `bytes ${start}-${end}/${f.size}`;
+          }
+          hdr['Content-Length'] = f.size === 0 ? 0 : end - start + 1;
+          res.writeHead(code, hdr);
+          if (f.size === 0) { res.end(); return; }
+          const rs = fs.createReadStream(f.real, { start, end });
+          rs.on('error', () => res.destroy()); res.on('close', () => rs.destroy()); rs.pipe(res);
+          return;
+        }
+        if (pathname === '/api/files/categories') { sendJson(200, { success: true, categories: listCategories() }); return; }
+        sendJson(200, { success: true, ...listDir(parsedUrl.searchParams.get('cat') || '', parsedUrl.searchParams.get('path') || '') }); return;
+      } catch (err) {
+        const code = err.status || (err.code === 'ENOENT' ? 404 : err.code === 'ENOTDIR' ? 400 : 500);
+        sendError(code, err.status ? err.message : (code === 404 ? 'Not found' : code === 400 ? 'Not a folder' : 'Could not read folder')); return;
+      }
+    }
+
     if (pathname.startsWith('/api/media/')) {
       // Owner-only: block anything that arrived through the public tunnel / a proxy
       const h = req.headers;
@@ -1266,6 +1369,7 @@ const server = http.createServer(async (req, res) => {
         sendError(400, 'Invalid playback payload');
         return;
       }
+      recordWatch(key, position, duration);        // persistent watched / partial / completed label
       const all = loadPlayback();
       // Not really started, or finished (within 15s of the end): forget it so the next play starts at 0.
       const finished = duration > 0 && position > duration - 15;
