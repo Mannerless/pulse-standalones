@@ -72,6 +72,8 @@
     if (a === 'play') {
       const slot = wrap.querySelector('#pl-' + id);
       slot.innerHTML = `<video class="md-player" controls autoplay src="/api/media/file?id=${id}&i=0"></video>`;
+      const mdV = slot.querySelector('video');
+      if (mdV) { mdV.muted = false; mdV.defaultMuted = false; mdV.volume = 1.0; }
       return;
     }
     if (a === 'delete' && !confirm('Delete the downloaded file(s) from disk?')) return;

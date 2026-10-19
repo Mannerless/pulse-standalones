@@ -103,6 +103,21 @@ export function cleanupOrphanedParts() {
   }
 }
 
+export async function hasAudioStream(filePath) {
+  try {
+    const { stdout } = await execFileAsync("ffprobe", [
+      "-v", "error",
+      "-select_streams", "a",
+      "-show_entries", "stream=codec_type",
+      "-of", "csv=p=0",
+      filePath
+    ]);
+    return Boolean(stdout.trim());
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Multi-Pass Audio Verification Pipeline:
  * Pass 1: Source Handshake & Upstream Server Flag (--dub)
@@ -163,8 +178,9 @@ export async function verifyAudioIntegrity(filePath, requestedMode, pass1Info = 
         pass2.detail = `Audio stream verified (codec=${audioStream.codec_name}, ${audioStream.channels}ch, ${audioStream.sample_rate}Hz, tag=${audioLang})`;
       }
     } else {
-      pass2.status = 'WARNING_NO_AUDIO_STREAM';
-      pass2.detail = 'No audio stream detected by ffprobe';
+      pass2.status = 'FAILED_NO_AUDIO_STREAM';
+      pass2.detail = 'No audio stream detected by ffprobe; stream is mute';
+      throw new Error('Downloaded stream contains no audio (file is mute)');
     }
   } catch (err) {
     pass2.status = 'WARNING_PROBE_ERROR';
@@ -208,25 +224,31 @@ export async function verifyAudioIntegrity(filePath, requestedMode, pass1Info = 
     }
   }
 
-  const finalIsDub = isEnglishDub;
-  const audioMode = finalIsDub ? 'dub' : 'sub';
-  const audioLabel = finalIsDub ? 'English Dub (Verified ✓)' : 'Japanese Sub (Dub Unavailable)';
+  const hasAudio = Boolean(audioStream);
+  const finalIsDub = hasAudio && isEnglishDub;
+  const audioMode = hasAudio ? (finalIsDub ? 'dub' : 'sub') : 'none';
+  const audioLabel = hasAudio
+    ? (finalIsDub ? 'English Dub (Verified ✓)' : 'Japanese Sub (Dub Unavailable)')
+    : 'Mute (No Audio Track Detected ✗)';
 
   return {
     verifiedAt: new Date().toISOString(),
+    hasAudio,
     isDub: finalIsDub,
     audioMode,
     audioLanguage: audioLang,
     audioLabel,
     codec: audioStream?.codec_name || 'unknown',
-    channels: audioStream?.channels || 2,
-    sampleRate: audioStream?.sample_rate || 48000,
+    channels: audioStream?.channels || 0,
+    sampleRate: audioStream?.sample_rate || 0,
     doubleChecked: true,
     tripleChecked: true,
     passes: [pass1, pass2, pass3],
-    summary: finalIsDub
-      ? 'Double & Triple Verified: English Dubbed Audio'
-      : 'Verified: Subbed Audio (English Dub Unavailable Upstream)'
+    summary: !hasAudio
+      ? 'Verification FAILED: Downloaded stream contains no audio tracks (file is mute)'
+      : (finalIsDub
+        ? 'Double & Triple Verified: English Dubbed Audio'
+        : 'Verified: Subbed Audio (English Dub Unavailable Upstream)')
   };
 }
 
@@ -454,7 +476,7 @@ async function resolverDownload(task, mode) {
     const args = ['-v', 'error', '-nostdin', '-y', '-progress', 'pipe:1', '-nostats',
       '-allowed_segment_extensions', 'ALL', '-extension_picky', '0',
       '-headers', `Referer: ${r.referer}\r\n`, '-user_agent', HLS_UA,
-      '-i', variantUrl, '-c', 'copy', '-bsf:a', 'aac_adtstoasc', '-f', 'mp4', partMp4];
+      '-i', r.m3u8, '-map', '0:v:0', '-map', '0:a?', '-c', 'copy', '-bsf:a', 'aac_adtstoasc', '-f', 'mp4', partMp4];
     const code = await new Promise((resolve) => {
       const child = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
       task.proc = child;
@@ -485,6 +507,13 @@ async function resolverDownload(task, mode) {
       try { fs.unlinkSync(partMp4); } catch {}
       return { ok: false, error: `ffmpeg failed (${code}): ${task.__ffErr || 'no output'}` };
     }
+    try {
+      const { stdout: probe } = await execFileAsync('ffprobe', ['-v', 'error', '-select_streams', 'a', '-show_entries', 'stream=codec_type', '-of', 'csv=p=0', partMp4]);
+      if (!probe.trim()) {
+        try { fs.unlinkSync(partMp4); } catch {}
+        return { ok: false, error: 'Downloaded stream has no audio track (video-only HLS variant); retry or use another server' };
+      }
+    } catch { /* probe unavailable: fall through to later verification passes */ }
     fs.renameSync(partMp4, finalMp4);
     return { ok: true, server: r.server, mode };
   } catch (e) {
@@ -514,6 +543,16 @@ async function executeDownloadTask(task) {
   let pass1Info = { isDub: true, detail: 'Upstream English Dub source handshake succeeded' };
   let files = fs.existsSync(taskDir) ? fs.readdirSync(taskDir) : [];
   let videoFile = files.find(f => (f.endsWith('.mp4') || f.endsWith('.mkv')) && !f.includes('.part'));
+
+  // If ani-cli downloaded a mute video-only stream, discard it so browser-resolver can obtain the full audio
+  if (videoFile) {
+    const audioOk = await hasAudioStream(path.join(taskDir, videoFile));
+    if (!audioOk) {
+      console.warn(`[DownloadManager] ani-cli downloaded mute file for "${title}" Ep ${cleanEp}. Discarding corrupt file to route to resolver...`);
+      try { fs.unlinkSync(path.join(taskDir, videoFile)); } catch {}
+      videoFile = null;
+    }
+  }
 
   // Exhaust every English Dub route before considering subs: browser-resolved player (HD-2, then Vidstream-2)
   let resolverError = null;
@@ -590,6 +629,14 @@ async function executeDownloadTask(task) {
     // Run Double and Triple Verification Passes
     console.log(`[DownloadManager] Running Multi-Pass Audio Verification on ${fullVideoPath}...`);
     const verification = await verifyAudioIntegrity(fullVideoPath, task.isDub ? 'dub' : 'sub', pass1Info);
+
+    if (!verification.hasAudio) {
+      console.error(`[DownloadManager] Verification rejected ${fullVideoPath}: 0 audio tracks present. Purging defective file.`);
+      try { fs.unlinkSync(fullVideoPath); } catch {}
+      task.status = 'failed';
+      task.error = 'Downloaded stream contains no audio tracks (mute file).';
+      return;
+    }
 
     noSourceStreak.set(String(animeId), 0);
     task.status = 'ready';
@@ -813,6 +860,33 @@ export function handleAction({ animeId, episode, action }) {
   }
 
   return { success: false, error: 'Unknown action' };
+}
+
+// Remove cached episodes already watched >= threshold (fraction of duration). `watch` is the
+// watch-status map keyed "<animeId>_<ep>". dryRun lists candidates without deleting.
+export function purgeWatchedCache({ watch = {}, threshold = 0.95, dryRun = false } = {}) {
+  const th = Math.min(1, Math.max(0.5, Number(threshold) || 0.95));
+  const removed = [];
+  let freed = 0;
+  let dirs = [];
+  try { dirs = fs.readdirSync(CACHE_DIR, { withFileTypes: true }).filter(d => d.isDirectory()); } catch { return { success: true, dryRun, count: 0, freedBytes: 0, removed }; }
+  for (const d of dirs) {
+    const m = /^(\d+)_ep(\d+)$/.exec(d.name);
+    if (!m) continue;
+    const key = `${m[1]}_${Number(m[2])}`;
+    if (activeTasks.has(key) || taskQueue.some(q => q.key === key)) continue;   // never touch running/queued work
+    const w = watch[key];
+    if (!w || !(Number(w.duration) > 0) || !(Number(w.position) >= 0) || Number(w.position) / Number(w.duration) < th) continue;
+    const dir = path.join(CACHE_DIR, d.name);
+    let size = 0;
+    try { for (const f of fs.readdirSync(dir)) size += fs.statSync(path.join(dir, f)).size; } catch {}
+    if (!dryRun) {
+      try { fs.rmSync(dir, { recursive: true, force: true }); } catch (e) { console.error('[DownloadManager] purge failed:', dir, e.message); continue; }
+    }
+    freed += size;
+    removed.push({ animeId: m[1], episode: Number(m[2]), pct: Math.round((w.position / w.duration) * 1000) / 10, bytes: size });
+  }
+  return { success: true, dryRun, count: removed.length, freedBytes: freed, removed };
 }
 
 export function getLibraryList() {

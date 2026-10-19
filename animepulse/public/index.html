@@ -4,6 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>AnimePulse — Streamability &amp; Availability Index</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
@@ -45,6 +48,10 @@
     <button class="tab-btn" data-mode="popular" role="tab">⭐ Most Popular</button>
     <button class="tab-btn" data-mode="airing" role="tab">📡 Currently Airing</button>
     <button class="tab-btn" data-mode="top" role="tab">✨ Top Rated</button>
+    <span class="tab-sep" aria-hidden="true"></span>
+    <button class="tab-btn live-tab" data-mode="live-tv" role="tab" title="Live-action TV series (iTunes charts + TVmaze)">📺 TV Series</button>
+    <button class="tab-btn live-tab" data-mode="live-movies" role="tab" title="Live-action movies (iTunes charts)">🎬 Movies</button>
+    <span class="tab-sep" aria-hidden="true"></span>
     <button class="tab-btn history-tab" data-mode="history" role="tab">
       📜 Watch History <span id="history-badge" class="badge-counter">0</span>
     </button>
@@ -66,12 +73,72 @@
     <button class="genre-chip" data-genre="Slice of Life">Slice of Life</button>
   </div>
 
+  <!-- Live-action genre chips (TV / Movies tabs); populated from /api/live/genres -->
+  <div id="live-genre-bar" class="genre-bar" style="display: none;"></div>
+
   <!-- Main Content Area -->
+  <!-- Interactive Hero Spotlight Section -->
+  <section id="hero-spotlight" class="hero-spotlight" style="display: none;">
+    <div class="hero-banner-art" id="hero-banner-art">
+      <div class="hero-gradient-overlay"></div>
+    </div>
+    <div class="hero-content">
+      <div class="hero-badges">
+        <span class="hero-badge-spotlight">⚡ SPOTLIGHT</span>
+        <span class="hero-badge-score" id="hero-score">--</span>
+        <span class="hero-badge-status" id="hero-status">Airing</span>
+        <span class="hero-badge-format" id="hero-format">TV</span>
+      </div>
+      <h1 class="hero-title" id="hero-title">--</h1>
+      <div class="hero-genres" id="hero-genres"></div>
+      <p class="hero-synopsis" id="hero-synopsis">--</p>
+      <div class="hero-actions">
+        <button id="btn-hero-stream" class="btn-hero-primary" type="button">
+          <span class="btn-icon">▶</span> Stream Episode 1
+        </button>
+        <button id="btn-hero-details" class="btn-hero-secondary" type="button">
+          <span class="btn-icon">ℹ</span> Details &amp; Episodes
+        </button>
+        <div class="hero-stream-hint">
+          <span>● English Dub &amp; 1080p Sub</span>
+          <span>● Zero-buffering Cache Ready</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <main class="content-container">
     <!-- Active Section Header -->
     <div class="section-header">
-      <h2 id="section-title">Trending Anime</h2>
-      <span id="results-count" class="results-tag">Loading catalog…</span>
+      <div class="section-title-wrap">
+        <h2 id="section-title">Trending Anime</h2>
+        <span id="results-count" class="results-tag">Loading catalog…</span>
+      </div>
+      
+      <!-- Interactive Quick Filter & Density Toolbar -->
+      <div class="interactive-toolbar">
+        <div class="filter-audio-pills" role="radiogroup" aria-label="Audio Filter">
+          <button class="audio-pill active" data-audio="all" type="button">All Audio</button>
+          <button class="audio-pill" data-audio="dub" type="button">🎙️ Dub</button>
+          <button class="audio-pill" data-audio="sub" type="button">🇯🇵 Sub</button>
+        </div>
+        
+        <div class="sort-selector-wrap">
+          <span class="sort-label">Sort:</span>
+          <select id="sort-selector" class="sort-select">
+            <option value="trending" selected>🔥 Trending</option>
+            <option value="score">⭐ Highest Rated</option>
+            <option value="popular">👥 Most Popular</option>
+            <option value="title">🔤 Title (A-Z)</option>
+            <option value="episodes">📺 Episodes</option>
+          </select>
+        </div>
+
+        <div class="view-density-toggle">
+          <button id="btn-density-grid" class="btn-density active" type="button" title="Comfortable Grid">⊞</button>
+          <button id="btn-density-compact" class="btn-density" type="button" title="Compact Density">≣</button>
+        </div>
+      </div>
     </div>
 
     <!-- Cards Grid -->
@@ -96,6 +163,8 @@
       <div class="downloads-toolbar">
         <span class="history-info">Read-only view of your saved and downloading files, grouped by category</span>
         <button id="btn-refresh-downloads" class="btn-sync-history" type="button">🔄 Refresh</button>
+        <button id="btn-purge-watched" class="btn-sync-history" type="button">🗑 Delete watched (95%+)</button>
+        <button id="btn-identify-episodes" class="btn-sync-history" type="button">🔎 Fix unlabeled episodes</button>
       </div>
       <div id="downloads-tree" class="downloads-tree"></div>
     </div>
@@ -153,7 +222,7 @@
             </div>
             <div class="player-frame-wrapper">
               <iframe id="player-frame" src="" allow="autoplay; fullscreen; encrypted-media; picture-in-picture" allowfullscreen referrerpolicy="no-referrer-when-downgrade"></iframe>
-              <video id="native-player" controls preload="auto" playsinline style="display:none; width: 100%; height: 100%; background: #000; border-radius: 8px;"></video>
+              <video id="native-player" controls autoplay preload="auto" playsinline style="display:none; width: 100%; height: 100%; background: #000; border-radius: 8px;"></video>
               <div id="completion-action-overlay" class="completion-overlay" style="display:none;">
                 <div class="completion-card">
                   <div class="completion-badge">🎉 Episode Finished!</div>
@@ -257,7 +326,11 @@
               </div>
             </div>
             <div class="ep-picker-box">
-              <span class="ep-picker-label">Select Any Episode in Catalog:</span>
+              <div class="ep-filter-row">
+                <span class="ep-picker-label">Select Episode to Stream:</span>
+                <input id="ep-filter-input" class="ep-filter-input" type="text" placeholder="Quick find ep #..." autocomplete="off">
+              </div>
+              <div id="ep-range-tabs" class="ep-range-tabs" style="display: none;"></div>
               <div id="ep-buttons-grid" class="ep-buttons-grid">
                 <!-- Dynamically populated episode buttons -->
               </div>
@@ -312,6 +385,21 @@
           <div id="modal-genres" class="genres-list"></div>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- Live-Action Detail Modal (TV series / movies; separate from the anime modal) -->
+  <div id="live-modal" class="modal-backdrop" style="display: none;">
+    <div class="modal-card live-modal-card">
+      <button id="live-modal-close-btn" class="modal-close" type="button">✕</button>
+      <div id="live-modal-banner" class="modal-banner">
+        <div class="modal-banner-gradient"></div>
+        <div class="modal-title-box">
+          <h2 id="live-modal-title" class="modal-title"></h2>
+          <div id="live-modal-sub" class="modal-romaji"></div>
+        </div>
+      </div>
+      <div id="live-modal-body" class="modal-body"></div>
     </div>
   </div>
 

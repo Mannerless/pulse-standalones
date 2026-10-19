@@ -10,17 +10,20 @@ import {
   getDownloadStatus,
   handleAction,
   getLibraryList,
+  purgeWatchedCache,
   streamVideoFile,
   streamSubtitleFile,
   cleanupOrphanedParts,
 } from './download-manager.mjs';
 import { listCategories, listDir, openFile, watchKeyForFile } from './file-tree.mjs';
+import { scanUnlabeled, applyRenames } from './episode-identify.mjs';
 import { startMediaDownload, listJobs, mediaAction, streamMediaFile, checkTools, getMediaDir } from './media-downloader.mjs';
+import { LIVE_GENRES, liveFeed, liveSearch, liveDetails, prewarmLiveCatalog } from './live-catalog.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const PORT = parseInt(process.env.PORT || '7788', 10);
+const PORT = parseInt(process.env.PORT || '7888', 10);
 const PUBLIC_PORT = parseInt(process.env.ANIMEPULSE_PUBLIC_PORT || String(PORT + 1), 10); // tunnel-only listener; owner tools are blocked on it
 // SHARING IS OFF BY DEFAULT: loopback only, no public tunnel. Opt in explicitly:
 //   ANIMEPULSE_SHARE=1 -> public tunnel + LAN reachable (0.0.0.0)
@@ -561,6 +564,36 @@ function computeAvailabilityIndex(anime, episodeNumber = 1) {
   };
 }
 
+// One POST to AniList. Transient network failures (connect timeouts, resets, DNS
+// hiccups) are retried with backoff so a brief drop doesn't surface as a 500.
+const ANILIST_NET_RETRIES = 2;
+const ANILIST_TIMEOUT_MS = 20000;
+const RETRYABLE_NET_CODES = new Set(['UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_SOCKET', 'ECONNRESET', 'EAI_AGAIN', 'ENOTFOUND', 'ETIMEDOUT', 'ECONNREFUSED']);
+
+async function fetchAniListOnce(query, variables) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fetch('https://graphql.anilist.co', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'User-Agent': 'AnimePulse/1.0',
+        },
+        body: JSON.stringify({ query, variables }),
+        signal: AbortSignal.timeout(ANILIST_TIMEOUT_MS),
+      });
+    } catch (err) {
+      const code = err?.cause?.code || err?.code;
+      const retryable = err?.name === 'TimeoutError' || RETRYABLE_NET_CODES.has(code);
+      if (!retryable || attempt >= ANILIST_NET_RETRIES) throw err;
+      const waitMs = 1000 * (attempt + 1);
+      console.warn(`[AnimePulse] AniList network error (${code || err.name}); retrying in ${waitMs / 1000}s (attempt ${attempt + 1}/${ANILIST_NET_RETRIES})`);
+      await new Promise((r) => setTimeout(r, waitMs));
+    }
+  }
+}
+
 // AniList GraphQL Fetcher with caching
 async function fetchAniList(query, variables = {}) {
   const cacheKey = JSON.stringify({ query, variables });
@@ -573,15 +606,7 @@ async function fetchAniList(query, variables = {}) {
   const MAX_RATE_LIMIT_RETRIES = 3;
   let res;
   for (let attempt = 0; ; attempt++) {
-    res = await fetch('https://graphql.anilist.co', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        'User-Agent': 'AnimePulse/1.0',
-      },
-      body: JSON.stringify({ query, variables }),
-    });
+    res = await fetchAniListOnce(query, variables);
     if (res.status !== 429 || attempt >= MAX_RATE_LIMIT_RETRIES) break;
     const retryAfter = parseInt(res.headers.get('retry-after') || '', 10);
     const waitMs = Math.min(30000, (Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : 5 * (attempt + 1)) * 1000);
@@ -998,6 +1023,31 @@ const server = http.createServer(async (req, res) => {
     }
 
     // -----------------------------------------------------------------------
+    // API: GET /api/live/{genres,feed,search,details}  (live-action TV + movies;
+    // separate ids and sources from the AniList paths, see live-catalog.mjs)
+    // -----------------------------------------------------------------------
+    if (pathname.startsWith('/api/live/') && req.method === 'GET') {
+      const sp = parsedUrl.searchParams;
+      try {
+        if (pathname === '/api/live/genres') {
+          sendJson(200, { success: true, genres: LIVE_GENRES });
+        } else if (pathname === '/api/live/feed') {
+          sendJson(200, { success: true, ...(await liveFeed({ kind: sp.get('kind'), genre: sp.get('genre'), page: sp.get('page'), since: sp.get('since') })) });
+        } else if (pathname === '/api/live/search') {
+          sendJson(200, { success: true, ...(await liveSearch({ kind: sp.get('kind'), q: sp.get('q') })) });
+        } else if (pathname === '/api/live/details') {
+          sendJson(200, { success: true, item: await liveDetails(sp.get('id')) });
+        } else {
+          sendError(404, 'Unknown live catalog endpoint');
+        }
+      } catch (err) {
+        console.warn(`[AnimePulse] live catalog ${pathname}: ${err.message}`);
+        sendError(err.status || 502, err.message);
+      }
+      return;
+    }
+
+    // -----------------------------------------------------------------------
     // API: GET /api/search
     // -----------------------------------------------------------------------
     if (pathname === '/api/search' && req.method === 'GET') {
@@ -1307,6 +1357,35 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (pathname === '/api/files/identify' && req.method === 'POST') {
+      let body = '';
+      for await (const chunk of req) { body += chunk; if (body.length > 4096) break; }
+      let p = {};
+      try { p = body ? JSON.parse(body) : {}; } catch { sendError(400, 'Invalid JSON body'); return; }
+      try {
+        const all = await scanUnlabeled();
+        const ready = all.filter((x) => x.to);
+        const unresolved = all.filter((x) => !x.to).map(({ category, from, unresolved: reason }) => ({ category, from, reason }));
+        const strip = ({ root, ...rest }) => rest;
+        if (p.apply === true) {
+          const res = applyRenames(ready);
+          sendJson(200, { success: true, applied: true, done: res.done, failed: res.failed, unresolved });
+        } else {
+          sendJson(200, { success: true, applied: false, proposals: ready.map(strip), unresolved });
+        }
+      } catch (err) { sendError(500, err.message); }
+      return;
+    }
+
+    if (pathname === '/api/download/purge-watched' && req.method === 'POST') {
+      let body = '';
+      for await (const chunk of req) { body += chunk; if (body.length > 4096) break; }
+      let p = {};
+      try { p = body ? JSON.parse(body) : {}; } catch { sendError(400, 'Invalid JSON body'); return; }
+      sendJson(200, purgeWatchedCache({ watch: loadWatch(), threshold: 0.95, dryRun: p.dryRun !== false }));
+      return;
+    }
+
     if (pathname === '/api/download/library' && req.method === 'GET') {
       const library = getLibraryList();
       sendJson(200, { success: true, library });
@@ -1586,4 +1665,5 @@ server.listen(PORT, HOST, () => {
   console.log(`[AnimePulse] Server running at http://${HOST}:${PORT}`);
   if (TUNNEL_ENABLED) startTunnel();
   else console.log('[AnimePulse] Sharing is OFF (loopback only, no tunnel). Set ANIMEPULSE_SHARE=1 to enable.');
+  prewarmLiveCatalog();
 });
