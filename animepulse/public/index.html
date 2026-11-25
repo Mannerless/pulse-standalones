@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/tv.css">
 </head>
 <body>
   <!-- Top Navigation & Header -->
@@ -29,10 +30,10 @@
 
     <!-- Right Controls -->
     <div class="header-controls">
-      <div id="outside-viewers-badge" class="outside-viewers-badge" title="External viewers currently logged via remote tunnel">
+      <button type="button" id="outside-viewers-badge" class="outside-viewers-badge" title="Recent outside viewers">
         <span>👥 Outside Views:</span>
         <strong id="outside-viewers-count">0</strong>
-      </div>
+      </button>
       <button id="btn-share-link" class="btn-share" type="button" title="Copy remote tunnel link for family members">
         🔗 Share Family Link
       </button>
@@ -473,9 +474,20 @@
   <!-- Toast Notification -->
   <div id="toast" class="toast">Action Executed</div>
 
+  <div id="viewers-panel" class="viewers-panel" hidden>
+    <div class="viewers-panel-card" role="dialog" aria-modal="true" aria-labelledby="viewers-panel-title">
+      <h2 id="viewers-panel-title">Outside viewers</h2>
+      <p id="viewers-panel-summary" class="viewers-panel-summary"></p>
+      <ul id="viewers-panel-list" class="viewers-panel-list"></ul>
+      <button type="button" id="viewers-panel-close" class="viewers-panel-close">OK</button>
+    </div>
+  </div>
+
   <script src="/subs.js"></script>
   <script src="/app.js"></script>
   <script src="/media.js"></script>
   <script src="/console.js"></script>
+  <script src="/viewers.js"></script>
+  <script src="/tv.js"></script>
 </body>
 </html>

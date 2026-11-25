@@ -1,0 +1,12 @@
+/build/
+/out/
+*.apk
+*.ap_
+*.idsig
+*.dex
+local.properties
+assets/share_token
+res/raw/share_token
+.gradle/
+.idea/
+*.iml
