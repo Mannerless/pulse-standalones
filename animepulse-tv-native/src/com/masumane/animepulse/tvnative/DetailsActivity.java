@@ -140,7 +140,8 @@ public class DetailsActivity extends Activity {
                     final String title = Show.pickTitle(anime.optJSONObject("title"));
                     String descRaw = anime.optString("description", "");
                     final String desc = stripHtml(descRaw);
-                    final int eps = anime.optInt("episodes");
+                    final int listedEps = (anime.has("episodes") && !anime.isNull("episodes"))
+                            ? anime.optInt("episodes", 0) : 0;
                     final int score = anime.optInt("averageScore");
                     final String format = anime.optString("format", "");
                     final String status = anime.optString("status", "");
@@ -179,23 +180,27 @@ public class DetailsActivity extends Activity {
                     runOnUiThread(new Runnable() {
                         public void run() {
                             titleView.setText(title.length() > 0 ? title : fallbackTitle);
+                            cachedEps.clear();
+                            cachedEps.addAll(cached);
+                            EpisodeGuess guess = resolveEpisodeCount(anime, cached);
+                            episodeCount = guess.count;
                             String meta = (score > 0 ? score + "%  ·  " : "")
                                     + (format.length() > 0 ? format + "  ·  " : "")
-                                    + (eps > 0 ? eps + " episodes  ·  " : "")
+                                    + (episodeCount > 0 ? episodeCount + " episodes  ·  " : "")
                                     + status;
                             if (genreLine.length() > 0) meta += "\n" + genreLine;
                             metaView.setText(meta);
                             synopsisView.setText(desc);
-                            episodeCount = eps;
-                            cachedEps.clear();
-                            cachedEps.addAll(cached);
                             if (!cached.isEmpty()) {
                                 statusView.setText(cached.size() + " cached episode"
-                                        + (cached.size() == 1 ? "" : "s") + " ready to play");
-                            } else if (eps > 0) {
+                                        + (cached.size() == 1 ? "" : "s") + " ready to play"
+                                        + (guess.note.length() > 0 ? "  ·  " + guess.note : ""));
+                            } else if (listedEps > 0) {
                                 statusView.setText("No cached episodes on the server for this title yet.");
                             } else {
-                                statusView.setText("Episode count unknown.");
+                                statusView.setText(guess.note.length() > 0
+                                        ? guess.note
+                                        : "Episode list estimated.");
                             }
                             if (art != null && art.startsWith("http")) {
                                 ImageLoader.get(DetailsActivity.this).bind(banner, art, coverW);
@@ -212,6 +217,72 @@ public class DetailsActivity extends Activity {
                 }
             }
         }, "ap-details").start();
+    }
+
+
+    static final int MANUAL_COUR = 12;
+
+    static final class EpisodeGuess {
+        final int count;
+        final String note;
+        EpisodeGuess(int count, String note) {
+            this.count = count;
+            this.note = note == null ? "" : note;
+        }
+    }
+
+    /**
+     * When AniList omits episodes (common for currently airing shows), fall back in order:
+     * 1) highest cached/downloaded episode for this title
+     * 2) provider/AniList streaming episode list, if present
+     * 3) nextAiringEpisode.episode - 1 (latest aired)
+     * 4) a 12-episode cour, as a last-resort manual list
+     */
+    static EpisodeGuess resolveEpisodeCount(JSONObject anime, java.util.Set<Integer> cached) {
+        if (anime != null && anime.has("episodes") && !anime.isNull("episodes")) {
+            int listed = anime.optInt("episodes", 0);
+            if (listed > 0) return new EpisodeGuess(listed, "");
+        }
+        int maxCached = 0;
+        if (cached != null) {
+            for (Integer ep : cached) {
+                if (ep != null && ep.intValue() > maxCached) maxCached = ep.intValue();
+            }
+        }
+        int streaming = 0;
+        if (anime != null) {
+            org.json.JSONArray se = anime.optJSONArray("streamingEpisodes");
+            if (se != null) streaming = se.length();
+        }
+        int aired = 0;
+        String airNote = "";
+        if (anime != null) {
+            JSONObject next = anime.optJSONObject("nextAiringEpisode");
+            if (next != null) {
+                int nextEp = next.optInt("episode", 0);
+                if (nextEp > 1) {
+                    aired = nextEp - 1;
+                    airNote = "AniList has no episode count; showing " + aired
+                            + " aired (next is ep " + nextEp + ").";
+                } else if (nextEp == 1) {
+                    aired = 1;
+                    airNote = "AniList has no episode count; first episode is upcoming, showing ep 1.";
+                }
+            }
+        }
+        if (maxCached > 0 && maxCached >= streaming && maxCached >= aired) {
+            String note = "AniList has no episode count; showing episodes through cached ep " + maxCached + ".";
+            return new EpisodeGuess(maxCached, note);
+        }
+        if (streaming > 0 && streaming >= aired) {
+            return new EpisodeGuess(streaming,
+                    "AniList has no episode count; showing " + streaming + " listed stream episodes.");
+        }
+        if (aired > 0) {
+            return new EpisodeGuess(aired, airNote);
+        }
+        return new EpisodeGuess(MANUAL_COUR,
+                "AniList has no episode count; showing a 12-episode cour as a fallback.");
     }
 
     void populateEpisodes() {
