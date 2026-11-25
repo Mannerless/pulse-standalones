@@ -2,16 +2,23 @@ package com.masumane.animepulse.tvnative;
 
 import android.app.Activity;
 import android.graphics.Color;
+import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.util.TypedValue;
+import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowManager;
-import android.widget.ArrayAdapter;
+import android.widget.AdapterView;
+import android.widget.BaseAdapter;
+import android.widget.Button;
+import android.widget.FrameLayout;
+import android.widget.GridView;
+import android.widget.HorizontalScrollView;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
-import android.widget.ListView;
 import android.widget.TextView;
 
 import org.json.JSONObject;
@@ -21,16 +28,24 @@ import java.util.List;
 
 public class MainActivity extends Activity {
     static final int BG = 0xFF0B1020;
+    static final int PANEL = 0xFF141A2E;
     static final int TEXT = 0xFFFFFFFF;
     static final int MUTED = 0xFFB8C0D4;
     static final int CYAN = 0xFF1CF0FF;
+    static final int ACCENT = 0xFF7B2FF7;
+    static final String[] MODES = {"trending", "popular", "airing", "top"};
+    static final String[] MODE_LABELS = {"Trending", "Popular", "Airing", "Top Rated"};
 
-    TextView titleView;
     TextView statusView;
-    ListView listView;
+    LinearLayout modeRow;
+    GridView grid;
+    PosterAdapter adapter;
     ApiClient api;
-    final List<String> rows = new ArrayList<String>();
-    ArrayAdapter<String> adapter;
+    String mode = "trending";
+    final List<Show> shows = new ArrayList<Show>();
+    int itemWidth;
+    int itemHeight;
+    final List<Button> modeButtons = new ArrayList<Button>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -40,82 +55,140 @@ public class MainActivity extends Activity {
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
         hideSystemUi();
 
-        int pad = dp(20);
+        int screenW = getResources().getDisplayMetrics().widthPixels;
+        int hPad = dp(20);
+        int cols = 5;
+        int gap = dp(12);
+        itemWidth = (screenW - hPad * 2 - gap * (cols - 1)) / cols;
+        itemHeight = Math.round(itemWidth * 1.42f);
+
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(BG);
-        root.setPadding(pad, dp(16), pad, pad);
+        root.setPadding(hPad, dp(12), hPad, dp(12));
 
-        titleView = new TextView(this);
-        titleView.setText("Anime Pulse");
-        titleView.setTextColor(TEXT);
-        titleView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 28);
-        root.addView(titleView);
-
+        LinearLayout header = new LinearLayout(this);
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        TextView title = new TextView(this);
+        title.setText("Anime Pulse");
+        title.setTextColor(TEXT);
+        title.setTypeface(Typeface.DEFAULT_BOLD);
+        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 24);
+        header.addView(title, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         statusView = new TextView(this);
         statusView.setTextColor(MUTED);
-        statusView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        statusView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
         statusView.setText("Connecting…");
-        statusView.setPadding(0, dp(6), 0, dp(12));
-        root.addView(statusView);
+        header.addView(statusView);
+        root.addView(header);
 
-        listView = new ListView(this);
-        listView.setDivider(null);
-        listView.setSelector(focusSelector());
-        adapter = new ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, rows) {
-            @Override
-            public View getView(int position, View convertView, ViewGroup parent) {
-                TextView tv = (TextView) super.getView(position, convertView, parent);
-                tv.setTextColor(TEXT);
-                tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
-                tv.setPadding(dp(16), dp(14), dp(16), dp(14));
-                tv.setMinHeight(dp(48));
-                return tv;
-            }
-        };
-        listView.setAdapter(adapter);
-        root.addView(listView, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        HorizontalScrollView scroller = new HorizontalScrollView(this);
+        scroller.setHorizontalScrollBarEnabled(false);
+        scroller.setPadding(0, dp(10), 0, dp(10));
+        modeRow = new LinearLayout(this);
+        modeRow.setOrientation(LinearLayout.HORIZONTAL);
+        for (int i = 0; i < MODES.length; i++) {
+            final String m = MODES[i];
+            Button b = modeButton(MODE_LABELS[i], i == 0);
+            b.setOnClickListener(new View.OnClickListener() {
+                public void onClick(View v) {
+                    selectMode(m);
+                }
+            });
+            modeButtons.add(b);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, dp(44));
+            lp.rightMargin = dp(10);
+            modeRow.addView(b, lp);
+        }
+        scroller.addView(modeRow);
+        root.addView(scroller, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        grid = new GridView(this);
+        grid.setNumColumns(cols);
+        grid.setHorizontalSpacing(gap);
+        grid.setVerticalSpacing(gap);
+        grid.setStretchMode(GridView.STRETCH_COLUMN_WIDTH);
+        grid.setSelector(android.R.color.transparent);
+        grid.setClipToPadding(false);
+        adapter = new PosterAdapter();
+        grid.setAdapter(adapter);
+        root.addView(grid, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
         setContentView(root);
 
         String token = TokenStore.read(this);
         api = new ApiClient(token);
         if (!api.hasToken()) {
-            statusView.setText("Share token is not in app storage yet. Run scripts/install-token.sh.");
+            statusView.setText("Share token is not in app storage yet.");
             return;
         }
         loadFeed();
     }
 
+    void selectMode(String m) {
+        mode = m;
+        for (int i = 0; i < modeButtons.size(); i++) {
+            styleModeButton(modeButtons.get(i), MODES[i].equals(mode));
+        }
+        loadFeed();
+    }
+
+    Button modeButton(String label, boolean selected) {
+        Button b = new Button(this);
+        b.setText(label);
+        b.setAllCaps(false);
+        b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        b.setMinHeight(dp(44));
+        b.setPadding(dp(16), dp(6), dp(16), dp(6));
+        styleModeButton(b, selected);
+        return b;
+    }
+
+    void styleModeButton(Button b, boolean selected) {
+        GradientDrawable bg = new GradientDrawable();
+        bg.setCornerRadius(dp(22));
+        if (selected) {
+            bg.setColor(ACCENT);
+            b.setTextColor(TEXT);
+        } else {
+            bg.setColor(PANEL);
+            b.setTextColor(MUTED);
+        }
+        bg.setStroke(dp(2), selected ? ACCENT : 0x00000000);
+        b.setBackground(focusAware(bg));
+    }
+
+    GradientDrawable focusAware(GradientDrawable base) {
+        return base;
+    }
+
     void loadFeed() {
-        statusView.setText("Loading /api/health and /api/feed…");
+        statusView.setText("Loading " + mode + "…");
+        final String requested = mode;
         new Thread(new Runnable() {
             public void run() {
                 try {
                     JSONObject health = api.getHealth();
                     final boolean ok = health.optBoolean("ok");
-                    final long up = health.optLong("uptimeSec");
-                    final List<Show> shows = api.getFeed("trending", 1);
-                    final List<String> lines = new ArrayList<String>();
-                    for (int i = 0; i < shows.size(); i++) {
-                        Show s = shows.get(i);
-                        lines.add(s.title);
-                    }
-                    final String status = (ok ? "API healthy" : "API not ok")
-                            + "  ·  uptime " + up + "s  ·  " + lines.size() + " trending titles";
+                    final List<Show> list = api.getFeed(requested, 1);
                     runOnUiThread(new Runnable() {
                         public void run() {
-                            statusView.setText(status);
-                            rows.clear();
-                            rows.addAll(lines);
+                            if (!requested.equals(mode)) return;
+                            shows.clear();
+                            shows.addAll(list);
                             adapter.notifyDataSetChanged();
-                            if (listView.getChildCount() >= 0) listView.requestFocus();
+                            statusView.setText((ok ? "API healthy" : "API not ok")
+                                    + "  ·  " + list.size() + " titles");
+                            if (grid.getChildCount() >= 0) grid.requestFocus();
                         }
                     });
                 } catch (final Exception e) {
                     runOnUiThread(new Runnable() {
                         public void run() {
-                            statusView.setText("Failed to load feed: " + safeMessage(e));
+                            statusView.setText("Failed to load: " + safeMessage(e));
                         }
                     });
                 }
@@ -123,21 +196,72 @@ public class MainActivity extends Activity {
         }, "ap-feed").start();
     }
 
+    class PosterAdapter extends BaseAdapter {
+        public int getCount() { return shows.size(); }
+        public Object getItem(int position) { return shows.get(position); }
+        public long getItemId(int position) { return shows.get(position).id; }
+
+        public View getView(int position, View convertView, ViewGroup parent) {
+            FrameLayout card;
+            ImageView art;
+            TextView caption;
+            if (convertView instanceof FrameLayout) {
+                card = (FrameLayout) convertView;
+                art = (ImageView) card.getChildAt(0);
+                caption = (TextView) card.getChildAt(1);
+            } else {
+                card = new FrameLayout(MainActivity.this);
+                art = new ImageView(MainActivity.this);
+                art.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                art.setBackgroundColor(PANEL);
+                card.addView(art, new FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+                caption = new TextView(MainActivity.this);
+                caption.setTextColor(TEXT);
+                caption.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+                caption.setMaxLines(2);
+                caption.setPadding(dp(8), dp(6), dp(8), dp(8));
+                caption.setBackgroundColor(0xCC0B1020);
+                FrameLayout.LayoutParams capLp = new FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                capLp.gravity = Gravity.BOTTOM;
+                card.addView(caption, capLp);
+            }
+            Show s = shows.get(position);
+            caption.setText(s.title);
+            art.setImageBitmap(null);
+            art.setBackgroundColor(PANEL);
+            ImageLoader.get(MainActivity.this).bind(art, s.coverUrl, itemWidth);
+            card.setPadding(dp(3), dp(3), dp(3), dp(3));
+            card.setBackground(cardBackground(false));
+            card.setLayoutParams(new GridView.LayoutParams(itemWidth, itemHeight));
+            card.setFocusable(true);
+            card.setFocusableInTouchMode(true);
+            final FrameLayout target = card;
+            card.setOnFocusChangeListener(new View.OnFocusChangeListener() {
+                public void onFocusChange(View v, boolean hasFocus) {
+                    target.setBackground(cardBackground(hasFocus));
+                    target.setPadding(dp(3), dp(3), dp(3), dp(3));
+                }
+            });
+            return card;
+        }
+    }
+
+    GradientDrawable cardBackground(boolean focused) {
+        GradientDrawable d = new GradientDrawable();
+        d.setColor(PANEL);
+        d.setCornerRadius(dp(8));
+        d.setStroke(dp(3), focused ? CYAN : 0x00000000);
+        return d;
+    }
+
     static String safeMessage(Exception e) {
         String m = e.getMessage();
         if (m == null) return e.getClass().getSimpleName();
-        // never surface a query string that might contain a token
         int q = m.indexOf("token=");
         if (q >= 0) return m.substring(0, q) + "token=REDACTED";
         return m;
-    }
-
-    GradientDrawable focusSelector() {
-        GradientDrawable d = new GradientDrawable();
-        d.setColor(0x00000000);
-        d.setStroke(dp(3), CYAN);
-        d.setCornerRadius(dp(6));
-        return d;
     }
 
     int dp(int v) {

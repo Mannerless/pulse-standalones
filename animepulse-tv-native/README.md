@@ -12,10 +12,10 @@ and this app will not replace the working wrapper.
 ## Progress (update this when work stops)
 
 - [x] Step 1: Leanback launcher + HttpURLConnection client for `/api/health` and `/api/feed`
-- [ ] Step 2: Browse grid with covers
+- [x] Step 2: Browse grid with covers
 - [ ] Step 3: Details screen
 - [ ] Step 4: MediaPlayer playback of cached episode URLs
-- Stopped at: step 1 buildable (Leanback launcher + health/feed list). Not installed on the TV yet.
+- Stopped at: step 2 buildable (cover grid). Installing on the Fire TV to verify.
 
 ## Token handling (do not print, do not commit)
 
@@ -49,3 +49,5 @@ Do not uninstall the wrapper or anything else.
 ## Stop notes
 
 - Step 1 (2026-11-25 ~3:29 AM America/New_York): buildable APK `build/animepulse-tv-native.apk`. Leanback launcher, TokenStore, ApiClient for `/api/health` and `/api/feed`. MainActivity shows health status and trending titles in a ListView. Not installed on the Fire TV (wait for the cover grid in step 2).
+
+- Step 2 (2026-11-25 ~3:32 AM America/New_York): 5-column cover grid with Trending/Popular/Airing/Top Rated modes, ImageLoader (memory + disk cache), D-pad focus rings. Buildable APK. About to install alongside the wrapper (distinct package) and verify with screencaps.
