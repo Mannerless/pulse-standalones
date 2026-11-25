@@ -51,3 +51,30 @@ git checkout main
 ## 5. Desktop launch
 
 `launch.sh` still starts the loopback UI when `DISPLAY` is set and `ANIMEPULSE_TV` / `ANIMEPULSE_HEADLESS` are unset. After rollback to the tarball or `main`, that is the previous launcher.
+
+## 4. Fire TV WebView wrapper (optional)
+
+The wrapper APK is a new app only: `com.masumane.animepulse.tvwrapper` (label: Anime Pulse). Nothing else was uninstalled when it was installed. Leave it in place unless you explicitly want it removed.
+
+To remove the wrapper only:
+
+```bash
+adb -s 10.146.65.136:5555 uninstall com.masumane.animepulse.tvwrapper
+```
+
+Do not use `adb uninstall` without that package name, and do not uninstall Tailscale or Silk.
+
+Source lives in `/home/dev/apps/animepulse-tv-wrapper` on branch `release/animepulse-v1.1.0`. The APK and the share token are not in git.
+
+The share token is stored in the app's private file `files/share_token` (written after install via `run-as`). Uninstalling the wrapper deletes that copy. The laptop copy at `/home/dev/.config/animepulse/share_token` is unchanged.
+
+The signing keystore is outside the repo: `~/.android/animepulse-tv.keystore` and `~/.android/animepulse-tv.keystore.pass` (mode 600). Leave them unless you also want to discard the signing key.
+
+Rebuild/reinstall (does not uninstall other apps):
+
+```bash
+cd /home/dev/apps/animepulse-tv-wrapper
+./build.sh
+./scripts/install.sh
+```
+
