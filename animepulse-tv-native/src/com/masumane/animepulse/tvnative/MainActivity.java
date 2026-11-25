@@ -226,6 +226,13 @@ public class MainActivity extends Activity {
         }
     }
 
+    static String posterUrl(Show s) {
+        if (s == null) return null;
+        if (s.coverUrl != null && s.coverUrl.startsWith("http")) return s.coverUrl;
+        if (s.bannerUrl != null && s.bannerUrl.startsWith("http")) return s.bannerUrl;
+        return null;
+    }
+
     void openDetails(Show show) {
         if (show == null || show.id <= 0) return;
         Intent i = new Intent(this, DetailsActivity.class);
@@ -259,8 +266,12 @@ public class MainActivity extends Activity {
                     String t = Show.pickTitle(anime.optJSONObject("title"));
                     if (t != null && t.length() > 0) s.title = t;
                     org.json.JSONObject cover = anime.optJSONObject("coverImage");
-                    if (cover != null) s.coverUrl = Show.firstUrl(cover, "extraLarge", "large", "medium");
+                    if (cover != null) s.coverUrl = Show.firstUrl(cover, "large", "extraLarge", "medium");
                     s.bannerUrl = anime.optString("bannerImage", "");
+                    if ((s.coverUrl == null || s.coverUrl.length() == 0)
+                            && s.bannerUrl != null && s.bannerUrl.startsWith("http")) {
+                        s.coverUrl = s.bannerUrl;
+                    }
                     s.description = anime.optString("description", "");
                 }
             } catch (Exception ignored) {}
@@ -304,10 +315,11 @@ public class MainActivity extends Activity {
             caption.setText(s.title);
             art.setImageBitmap(null);
             art.setBackgroundColor(PANEL);
+            String poster = posterUrl(s);
             Object prev = art.getTag();
-            if (s.coverUrl == null || !s.coverUrl.equals(prev)) {
-                art.setImageBitmap(null);
-                ImageLoader.get(MainActivity.this).bind(art, s.coverUrl, itemWidth);
+            boolean missing = art.getDrawable() == null;
+            if (poster == null || !poster.equals(prev) || missing) {
+                ImageLoader.get(MainActivity.this).bind(art, poster, itemWidth);
             }
             boolean selected = grid.hasFocus() && position == grid.getSelectedItemPosition();
             card.setPadding(dp(3), dp(3), dp(3), dp(3));

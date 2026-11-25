@@ -70,6 +70,16 @@ public class ImageLoader {
     }
 
     Bitmap load(String url, int targetW) {
+        Bitmap bmp = loadOnce(url, targetW);
+        if (bmp != null) return bmp;
+        try { Thread.sleep(400); } catch (InterruptedException ignored) {}
+        bmp = loadOnce(url, targetW);
+        if (bmp != null) return bmp;
+        try { Thread.sleep(800); } catch (InterruptedException ignored) {}
+        return loadOnce(url, targetW);
+    }
+
+    Bitmap loadOnce(String url, int targetW) {
         File disk = new File(diskDir, hash(url) + ".jpg");
         Bitmap fromDisk = decodeFile(disk.getAbsolutePath(), targetW);
         if (fromDisk != null) return fromDisk;
@@ -81,7 +91,8 @@ public class ImageLoader {
             conn.setConnectTimeout(10000);
             conn.setReadTimeout(15000);
             conn.setInstanceFollowRedirects(true);
-            if (conn.getResponseCode() != 200) return null;
+            int code = conn.getResponseCode();
+            if (code < 200 || code >= 300) return null;
             in = conn.getInputStream();
             File tmp = new File(disk.getAbsolutePath() + ".part");
             FileOutputStream out = new FileOutputStream(tmp);
