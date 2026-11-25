@@ -8,8 +8,9 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.view.Gravity;
 import android.view.KeyEvent;
-import android.view.SurfaceHolder;
-import android.view.SurfaceView;
+import android.graphics.SurfaceTexture;
+import android.view.Surface;
+import android.view.TextureView;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
@@ -24,7 +25,7 @@ import java.util.Map;
  * Plays a cached episode from /api/download/stream using MediaPlayer.
  * Token is sent as a request header only and is never logged.
  */
-public class PlayerActivity extends Activity implements SurfaceHolder.Callback,
+public class PlayerActivity extends Activity implements TextureView.SurfaceTextureListener,
         MediaPlayer.OnPreparedListener, MediaPlayer.OnErrorListener,
         MediaPlayer.OnCompletionListener, MediaPlayer.OnInfoListener {
     static final String EXTRA_ID = "animeId";
@@ -35,8 +36,8 @@ public class PlayerActivity extends Activity implements SurfaceHolder.Callback,
     int episode;
     String title;
     String token;
-    SurfaceView surface;
-    SurfaceHolder holder;
+    TextureView texture;
+    Surface surface;
     MediaPlayer player;
     TextView status;
     boolean surfaceReady;
@@ -60,8 +61,9 @@ public class PlayerActivity extends Activity implements SurfaceHolder.Callback,
 
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(Color.BLACK);
-        surface = new SurfaceView(this);
-        root.addView(surface, new FrameLayout.LayoutParams(
+        texture = new TextureView(this);
+        texture.setSurfaceTextureListener(this);
+        root.addView(texture, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         status = new TextView(this);
         status.setTextColor(Color.WHITE);
@@ -71,9 +73,6 @@ public class PlayerActivity extends Activity implements SurfaceHolder.Callback,
         root.addView(status, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
         setContentView(root);
-
-        holder = surface.getHolder();
-        holder.addCallback(this);
 
         if (token == null || token.length() == 0) {
             status.setText("Share token is not in app storage.");
@@ -102,17 +101,18 @@ public class PlayerActivity extends Activity implements SurfaceHolder.Callback,
             Map<String, String> headers = new HashMap<String, String>();
             headers.put(ApiClient.HEADER_TOKEN, token);
             player.setDataSource(this, uri, headers);
-            if (surfaceReady) player.setDisplay(holder);
+            if (surfaceReady && surface != null) player.setSurface(surface);
             player.prepareAsync();
         } catch (Exception e) {
             status.setText("Could not start playback: " + MainActivity.safeMessage(e));
         }
     }
 
-    public void surfaceCreated(SurfaceHolder h) {
+    public void onSurfaceTextureAvailable(SurfaceTexture st, int width, int height) {
         surfaceReady = true;
+        surface = new Surface(st);
         if (player != null) {
-            player.setDisplay(h);
+            player.setSurface(surface);
             if (prepared && playWhenReady) {
                 player.start();
                 status.setVisibility(View.GONE);
@@ -120,18 +120,25 @@ public class PlayerActivity extends Activity implements SurfaceHolder.Callback,
         }
     }
 
-    public void surfaceChanged(SurfaceHolder h, int format, int width, int height) {}
+    public void onSurfaceTextureSizeChanged(SurfaceTexture st, int width, int height) {}
 
-    public void surfaceDestroyed(SurfaceHolder h) {
+    public boolean onSurfaceTextureDestroyed(SurfaceTexture st) {
         surfaceReady = false;
         if (player != null) {
-            try { player.setDisplay(null); } catch (Exception ignored) {}
+            try { player.setSurface(null); } catch (Exception ignored) {}
         }
+        if (surface != null) {
+            surface.release();
+            surface = null;
+        }
+        return true;
     }
+
+    public void onSurfaceTextureUpdated(SurfaceTexture st) {}
 
     public void onPrepared(MediaPlayer mp) {
         prepared = true;
-        if (surfaceReady) mp.setDisplay(holder);
+        if (surfaceReady && surface != null) mp.setSurface(surface);
         if (playWhenReady) {
             mp.start();
             status.setVisibility(View.GONE);

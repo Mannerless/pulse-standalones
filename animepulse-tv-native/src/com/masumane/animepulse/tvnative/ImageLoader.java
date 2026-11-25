@@ -43,14 +43,17 @@ public class ImageLoader {
     }
 
     public void bind(final ImageView view, final String url, final int targetW) {
-        view.setImageBitmap(null);
         view.setTag(url);
-        if (url == null || url.length() == 0) return;
+        if (url == null || url.length() == 0) {
+            view.setImageBitmap(null);
+            return;
+        }
         Bitmap hit = memory.get(url);
         if (hit != null) {
             view.setImageBitmap(hit);
             return;
         }
+        view.setImageBitmap(null);
         exec.execute(new Runnable() {
             public void run() {
                 final Bitmap bmp = load(url, targetW);
@@ -70,6 +73,7 @@ public class ImageLoader {
         File disk = new File(diskDir, hash(url) + ".jpg");
         Bitmap fromDisk = decodeFile(disk.getAbsolutePath(), targetW);
         if (fromDisk != null) return fromDisk;
+        if (disk.isFile()) disk.delete();
         HttpURLConnection conn = null;
         InputStream in = null;
         try {

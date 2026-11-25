@@ -15,7 +15,7 @@ and this app will not replace the working wrapper.
 - [x] Step 2: Browse grid with covers
 - [x] Step 3: Details screen
 - [x] Step 4: MediaPlayer playback of cached episode URLs (built, not yet verified on the TV)
-- Stopped at: step 4 is buildable (MediaPlayer + header auth for /api/download/stream). Grid is verified on the TV. Details and playback were not screencapped because Amazon firebat/Prime Video took the foreground; no further TV input was sent.
+- Stopped at: step 4 tested on the Fire TV (details, cached playback, pause/resume, BACK). TV left on the native Trending grid with playback stopped. Small bugfixes committed (D-pad item click, cover reload, TextureView player).
 
 ## Token handling (do not print, do not commit)
 
@@ -60,3 +60,5 @@ Do not uninstall the wrapper or anything else.
   2. Open a trending title and screencap the details screen (`16-native-details.png`).
   3. Open the Cached tab, open the cached title, play the cached episode, screencap a few seconds apart (`16-native-playback-1.png`, `16-native-playback-2.png`).
   4. SELECT should pause/resume; BACK should return to details.
+
+- Testing (2026-11-25 ~3:50–4:05 AM America/New_York): Step-4 APK installed with `install -r`. D-pad SELECT initially did not open details (GridView had no OnItemClickListener); fixed and reinstalled. Cover grid went blank when selection called `notifyDataSetChanged` (rebind); fixed by restyling in place. SurfaceView playback was confirmed via dumpsys (H.264 1920x1080, AAC, audio started, pause froze frame count, resume advanced it) but screencaps were black because of the hardware overlay; switched player to TextureView and recaptured real frames. Cached tab played Daemons of the Shadow Realm ep 14. BACK returned to details, then home. Playback stopped. TV left on the Trending grid.

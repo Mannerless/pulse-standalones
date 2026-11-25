@@ -115,7 +115,24 @@ public class MainActivity extends Activity {
         grid.setSelector(android.R.color.transparent);
         grid.setClipToPadding(false);
         adapter = new PosterAdapter();
+        grid.setId(View.generateViewId());
         grid.setAdapter(adapter);
+        grid.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+            public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
+                if (position >= 0 && position < shows.size()) openDetails(shows.get(position));
+            }
+        });
+        grid.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                updateSelectionRings(position);
+            }
+            public void onNothingSelected(AdapterView<?> parent) {
+                updateSelectionRings(-1);
+            }
+        });
+        for (int i = 0; i < modeButtons.size(); i++) {
+            modeButtons.get(i).setNextFocusDownId(grid.getId());
+        }
         root.addView(grid, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
         setContentView(root);
@@ -199,6 +216,16 @@ public class MainActivity extends Activity {
     }
 
 
+    void updateSelectionRings(int selected) {
+        for (int i = 0; i < grid.getChildCount(); i++) {
+            View child = grid.getChildAt(i);
+            int pos = grid.getPositionForView(child);
+            boolean on = selected >= 0 && pos == selected && grid.hasFocus();
+            child.setBackground(cardBackground(on));
+            child.setPadding(dp(3), dp(3), dp(3), dp(3));
+        }
+    }
+
     void openDetails(Show show) {
         if (show == null || show.id <= 0) return;
         Intent i = new Intent(this, DetailsActivity.class);
@@ -277,25 +304,17 @@ public class MainActivity extends Activity {
             caption.setText(s.title);
             art.setImageBitmap(null);
             art.setBackgroundColor(PANEL);
-            ImageLoader.get(MainActivity.this).bind(art, s.coverUrl, itemWidth);
+            Object prev = art.getTag();
+            if (s.coverUrl == null || !s.coverUrl.equals(prev)) {
+                art.setImageBitmap(null);
+                ImageLoader.get(MainActivity.this).bind(art, s.coverUrl, itemWidth);
+            }
+            boolean selected = grid.hasFocus() && position == grid.getSelectedItemPosition();
             card.setPadding(dp(3), dp(3), dp(3), dp(3));
-            card.setBackground(cardBackground(false));
+            card.setBackground(cardBackground(selected));
             card.setLayoutParams(new GridView.LayoutParams(itemWidth, itemHeight));
-            card.setFocusable(true);
-            card.setFocusableInTouchMode(true);
-            final FrameLayout target = card;
-            card.setOnFocusChangeListener(new View.OnFocusChangeListener() {
-                public void onFocusChange(View v, boolean hasFocus) {
-                    target.setBackground(cardBackground(hasFocus));
-                    target.setPadding(dp(3), dp(3), dp(3), dp(3));
-                }
-            });
-            final Show show = s;
-            card.setOnClickListener(new View.OnClickListener() {
-                public void onClick(View v) {
-                    openDetails(show);
-                }
-            });
+            card.setFocusable(false);
+            card.setClickable(false);
             return card;
         }
     }
