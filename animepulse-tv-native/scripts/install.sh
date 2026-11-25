@@ -25,6 +25,6 @@ echo "Installing $APK on $SERIAL (adb install -r, no uninstall)..."
 
 "$ROOT/scripts/install-token.sh"
 
-echo "Launching wrapper..."
+echo "Launching native app..."
 "$ADB" -s "$SERIAL" shell am start -n "$PKG/.MainActivity"
 echo "Launched."

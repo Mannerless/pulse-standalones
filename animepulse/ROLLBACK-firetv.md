@@ -78,3 +78,25 @@ cd /home/dev/apps/animepulse-tv-wrapper
 ./scripts/install.sh
 ```
 
+## 5. Native Fire TV app (optional)
+
+The native client is a second, separate app: `com.masumane.animepulse.tvnative` (label: Anime Pulse Native). It does **not** replace the WebView wrapper (`com.masumane.animepulse.tvwrapper`). Nothing else was uninstalled when it was installed. Leave both in place unless you explicitly want one removed.
+
+To remove the native app only:
+
+```bash
+adb -s 10.146.65.136:5555 uninstall com.masumane.animepulse.tvnative
+```
+
+That command does not uninstall the wrapper, Tailscale, or Silk. To remove the wrapper, use the command in section 4.
+
+Source lives in `/home/dev/apps/animepulse-tv-native` on branch `release/animepulse-tv-apps`. The APK and the share token are not in git. The share token copy in the app's private `files/share_token` is deleted by uninstall; the laptop file at `/home/dev/.config/animepulse/share_token` is unchanged.
+
+Rebuild/reinstall (does not uninstall other apps):
+
+```bash
+cd /home/dev/apps/animepulse-tv-native
+./build.sh
+./scripts/install.sh
+```
+

@@ -1,6 +1,7 @@
 package com.masumane.animepulse.tvnative;
 
 import android.app.Activity;
+import android.content.Intent;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
@@ -261,7 +262,11 @@ public class DetailsActivity extends Activity {
                         statusView.setText("Episode " + ep + " is not cached on the server.");
                         return;
                     }
-                    statusView.setText("Playback arrives in step 4.");
+                    Intent i = new Intent(DetailsActivity.this, PlayerActivity.class);
+                    i.putExtra(PlayerActivity.EXTRA_ID, animeId);
+                    i.putExtra(PlayerActivity.EXTRA_EPISODE, ep);
+                    i.putExtra(PlayerActivity.EXTRA_TITLE, titleView.getText().toString());
+                    startActivity(i);
                 }
             });
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(

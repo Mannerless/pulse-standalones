@@ -14,8 +14,8 @@ and this app will not replace the working wrapper.
 - [x] Step 1: Leanback launcher + HttpURLConnection client for `/api/health` and `/api/feed`
 - [x] Step 2: Browse grid with covers
 - [x] Step 3: Details screen
-- [ ] Step 4: MediaPlayer playback of cached episode URLs
-- Stopped at: step 3 buildable (details screen + Cached tab). Installing update to verify.
+- [x] Step 4: MediaPlayer playback of cached episode URLs (built, not yet verified on the TV)
+- Stopped at: step 4 is buildable (MediaPlayer + header auth for /api/download/stream). Grid is verified on the TV. Details and playback were not screencapped because Amazon firebat/Prime Video took the foreground; no further TV input was sent.
 
 ## Token handling (do not print, do not commit)
 
@@ -53,3 +53,10 @@ Do not uninstall the wrapper or anything else.
 - Step 2 (2026-11-25 ~3:32 AM America/New_York): 5-column cover grid with Trending/Popular/Airing/Top Rated modes, ImageLoader (memory + disk cache), D-pad focus rings. Buildable APK. About to install alongside the wrapper (distinct package) and verify with screencaps.
 
 - Step 3 (2026-11-25 ~3:34 AM America/New_York): DetailsActivity loads `/api/details` (banner, meta, synopsis, episode row). Cached tab lists `/api/download/library` titles with covers. Cached episode buttons are marked; playback still a stub until step 4.
+
+- Step 4 (2026-11-25 ~3:39 AM America/New_York): PlayerActivity plays `/api/download/stream?animeId=&episode=` with MediaPlayer, sending `X-AnimePulse-Token` as a request header (never logged, never in the URI). Cached episode buttons on the details screen start the player. APK builds and is signed. **Not installed over the step-3 APK yet** — after the step-3 install, `com.amazon.firebat` (Prime Video / IgnitionActivity) was in the foreground, so install/launch/keyevents were stopped to avoid interrupting that video.
+- TV verification still needed when the Fire TV is free:
+  1. `./scripts/install.sh` (install -r; does not touch the wrapper).
+  2. Open a trending title and screencap the details screen (`16-native-details.png`).
+  3. Open the Cached tab, open the cached title, play the cached episode, screencap a few seconds apart (`16-native-playback-1.png`, `16-native-playback-2.png`).
+  4. SELECT should pause/resume; BACK should return to details.
