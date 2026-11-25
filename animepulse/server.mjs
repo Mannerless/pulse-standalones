@@ -19,6 +19,8 @@ import { listCategories, listDir, openFile, watchKeyForFile } from './file-tree.
 import { scanUnlabeled, applyRenames } from './episode-identify.mjs';
 import { startMediaDownload, listJobs, mediaAction, streamMediaFile, checkTools, getMediaDir } from './media-downloader.mjs';
 import { LIVE_GENRES, liveFeed, liveSearch, liveDetails, prewarmLiveCatalog } from './live-catalog.mjs';
+import { isMounted } from './mounts.mjs';
+import crypto from 'node:crypto';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -30,6 +32,68 @@ const PUBLIC_PORT = parseInt(process.env.ANIMEPULSE_PUBLIC_PORT || String(PORT +
 const SHARE_ON = process.env.ANIMEPULSE_SHARE === '1';
 const HOST = process.env.ANIMEPULSE_HOST || (SHARE_ON ? '0.0.0.0' : '127.0.0.1');
 const TUNNEL_ENABLED = SHARE_ON && process.env.ANIMEPULSE_TUNNEL !== '0';
+// Opt-in TV / LAN listeners (separate from the public tunnel). Loopback is unchanged.
+//   ANIMEPULSE_TV=1
+//   ANIMEPULSE_TV_HOSTS=100.118.77.78,10.146.65.53
+//   ANIMEPULSE_SHARE_TOKEN or ANIMEPULSE_SHARE_TOKEN_FILE (required to bind TV hosts)
+const TV_ENABLED = process.env.ANIMEPULSE_TV === '1';
+const TV_HOSTS = String(process.env.ANIMEPULSE_TV_HOSTS || '100.118.77.78,10.146.65.53')
+  .split(',')
+  .map((h) => h.trim())
+  .filter((h) => /^(?:\d{1,3}\.){3}\d{1,3}$/.test(h));
+const SHARE_TOKEN_FILE = process.env.ANIMEPULSE_SHARE_TOKEN_FILE
+  || path.join(process.env.HOME || '/home/dev', '.config/animepulse/share_token');
+function loadShareToken() {
+  const fromEnv = String(process.env.ANIMEPULSE_SHARE_TOKEN || '').trim();
+  if (fromEnv) return fromEnv;
+  try { return fs.readFileSync(SHARE_TOKEN_FILE, 'utf8').trim(); } catch { return ''; }
+}
+function tokensEqual(a, b) {
+  if (!a || !b) return false;
+  const ba = Buffer.from(String(a));
+  const bb = Buffer.from(String(b));
+  if (ba.length !== bb.length) return false;
+  return crypto.timingSafeEqual(ba, bb);
+}
+function readCookie(req, name) {
+  const raw = req.headers.cookie || '';
+  for (const part of raw.split(';')) {
+    const i = part.indexOf('=');
+    if (i === -1) continue;
+    const k = part.slice(0, i).trim();
+    if (k === name) return decodeURIComponent(part.slice(i + 1).trim());
+  }
+  return '';
+}
+function extractProvidedToken(req, parsedUrl) {
+  const q = parsedUrl.searchParams.get('token');
+  if (q) return q;
+  const h = req.headers['x-animepulse-token'];
+  if (h) return String(h).trim();
+  const auth = String(req.headers.authorization || '');
+  if (/^bearer\s+/i.test(auth)) return auth.replace(/^bearer\s+/i, '').trim();
+  return readCookie(req, 'animepulse_tv');
+}
+function setTokenCookie(res) {
+  // LAN is HTTP, so Secure cannot be set. HttpOnly + SameSite=Lax; token is never logged.
+  res.setHeader('Set-Cookie', 'animepulse_tv=' + encodeURIComponent(loadShareToken()) + '; HttpOnly; Path=/; SameSite=Lax; Max-Age=2592000');
+}
+function toolOnPath(bin) {
+  try { execFileSync('which', [bin], { stdio: 'ignore' }); return true; } catch { return false; }
+}
+function isOwnerOnlyPath(pathname) {
+  // Laptop-side tools: do not expose these on the public tunnel or the TV listener,
+  // even to a valid token holder. Token holders DO get catalog, playback, and
+  // on-demand episode downloads (/api/download/*) because that is how the TV is used.
+  return pathname.startsWith('/api/console')
+    || pathname === '/api/pin-display'
+    || pathname === '/api/monitors'
+    || pathname === '/api/close-window'
+    || pathname === '/api/launch'
+    || pathname === '/api/history/sync'
+    || pathname.startsWith('/api/media/')
+    || pathname === '/api/files/identify';
+}
 const DATA_DIR = path.join(__dirname, 'data');
 const HISTORY_FILE = path.join(DATA_DIR, 'history.json');
 const PLAYBACK_FILE = path.join(DATA_DIR, 'playback.json');
@@ -240,6 +304,7 @@ function getStats() {
       outsideViews: 0,
       totalViews: 0,
       uniqueIps: [],
+      recentViewers: [],
       streamsLaunched: 0,
       activeTunnelUrl: '',
       lastVisitedAt: null,
@@ -252,13 +317,14 @@ function getStats() {
       outsideViews: typeof parsed.outsideViews === 'number' ? parsed.outsideViews : 0,
       totalViews: typeof parsed.totalViews === 'number' ? parsed.totalViews : 0,
       uniqueIps: Array.isArray(parsed.uniqueIps) ? parsed.uniqueIps : [],
+      recentViewers: Array.isArray(parsed.recentViewers) ? parsed.recentViewers : [],
       streamsLaunched: typeof parsed.streamsLaunched === 'number' ? parsed.streamsLaunched : 0,
       activeTunnelUrl: typeof parsed.activeTunnelUrl === 'string' ? parsed.activeTunnelUrl : '',
       lastVisitedAt: parsed.lastVisitedAt || null,
     };
   } catch (err) {
     console.error('Error reading stats:', err);
-    return { outsideViews: 0, totalViews: 0, uniqueIps: [], streamsLaunched: 0, activeTunnelUrl: '', lastVisitedAt: null };
+    return { outsideViews: 0, totalViews: 0, uniqueIps: [], recentViewers: [], streamsLaunched: 0, activeTunnelUrl: '', lastVisitedAt: null };
   }
 }
 
@@ -279,6 +345,69 @@ function debouncedSaveStats() {
     saveStatsTimeout = null;
     saveStats(stats);
   }, 1000);
+}
+
+const RECENT_VIEWERS_MAX = 30;
+
+function normalizeClientIp(ip) {
+  if (!ip) return '';
+  let s = String(ip).trim();
+  if (s.startsWith('::ffff:')) s = s.slice(7);
+  return s;
+}
+
+function maskClientLabel(ip, ua) {
+  const addr = normalizeClientIp(ip);
+  let last = '';
+  const v4 = /^(?:\d{1,3}\.){3}(\d{1,3})$/.exec(addr);
+  if (v4) last = v4[1];
+  else if (addr.includes(':')) {
+    const parts = addr.split(':').filter(Boolean);
+    last = parts[parts.length - 1] || '';
+  }
+  const masked = last ? ('…' + last) : '…';
+  const family = /Silk|AFT/i.test(ua || '') ? 'Silk on Fire TV'
+    : /Edg\//.test(ua || '') ? 'Edge'
+    : /Chrome\//.test(ua || '') ? 'Chrome'
+    : /Firefox\//.test(ua || '') ? 'Firefox'
+    : 'Browser';
+  const net = addr.startsWith('100.') ? 'Tailscale'
+    : /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(addr) ? 'LAN'
+    : 'Outside';
+  return family + ' · ' + net + ' (' + masked + ')';
+}
+
+function listenerKind(req) {
+  if (req && req.isTvListener) return 'tv';
+  if (req && req.isPublic) return 'public';
+  return 'loopback';
+}
+
+function recordRecentViewer(req, clientIp) {
+  const ip = normalizeClientIp(clientIp);
+  if (!ip) return;
+  if (!Array.isArray(stats.recentViewers)) stats.recentViewers = [];
+  const ua = String(req.headers['user-agent'] || '');
+  const entry = {
+    at: new Date().toISOString(),
+    ip,
+    listener: listenerKind(req),
+    label: maskClientLabel(ip, ua),
+  };
+  stats.recentViewers = stats.recentViewers.filter((v) => v && v.ip !== ip);
+  stats.recentViewers.unshift(entry);
+  if (stats.recentViewers.length > RECENT_VIEWERS_MAX) {
+    stats.recentViewers.length = RECENT_VIEWERS_MAX;
+  }
+}
+
+function publicViewerList() {
+  const rows = Array.isArray(stats.recentViewers) ? stats.recentViewers : [];
+  return rows.map((v) => ({
+    at: v.at || null,
+    listener: v.listener || 'unknown',
+    label: v.label || maskClientLabel(v.ip, ''),
+  }));
 }
 
 // Remote Access Tunnel Management (HTTPS Port 443 Tunnel)
@@ -859,7 +988,7 @@ const server = http.createServer(async (req, res) => {
   // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-AnimePulse-Token');
 
   if (req.method === 'OPTIONS') {
     res.writeHead(204);
@@ -877,6 +1006,64 @@ const server = http.createServer(async (req, res) => {
   };
 
   // -------------------------------------------------------------------------
+  // GET /api/health  (no secrets; open on every listener so the TV can probe)
+  // -------------------------------------------------------------------------
+  if (pathname === '/api/health' && (req.method === 'GET' || req.method === 'HEAD')) {
+    const t = checkTools();
+    sendJson(200, {
+      ok: true,
+      uptimeSec: Math.round(process.uptime()),
+      port: PORT,
+      driveMounted: isMounted(),
+      tools: {
+        'yt-dlp': !!t['yt-dlp'],
+        ffmpeg: !!t.ffmpeg,
+        'ani-cli': toolOnPath('ani-cli'),
+        chrome: toolOnPath('google-chrome'),
+      },
+      tvListener: !!req.isTvListener,
+    });
+    return;
+  }
+
+  // -------------------------------------------------------------------------
+  // TV / LAN token gate (only on the opt-in extra listeners, not loopback)
+  // -------------------------------------------------------------------------
+  if (req.isTvListener) {
+    const expected = loadShareToken();
+    if (!expected) {
+      sendError(503, 'TV listener is not configured');
+      return;
+    }
+    const provided = extractProvidedToken(req, parsedUrl);
+    const fromQuery = !!parsedUrl.searchParams.get('token');
+    if (!tokensEqual(provided, expected)) {
+      res.setHeader('WWW-Authenticate', 'Bearer realm="AnimePulse"');
+      sendError(401, 'Token required');
+      return;
+    }
+    req.isTvAuthed = true;
+    if (fromQuery) {
+      setTokenCookie(res);
+      // Do not 302-redirect away from ?token=. Serving the page on this
+      // request means the first paint works even if the client (Silk, or a
+      // cookie policy on a bare IP) will not store the HttpOnly cookie.
+      // viewers.js strips ?token= from the address bar with replaceState.
+      parsedUrl.searchParams.delete('token');
+    } else if (!readCookie(req, 'animepulse_tv')) {
+      setTokenCookie(res);
+    }
+  }
+
+  // Owner tools stay on the loopback listener only. Token holders on the TV
+  // listener are allowed catalog, library playback, and /api/download/* so
+  // episodes can be requested from the TV.
+  if (isOwnerOnlyPath(pathname) && (req.isPublic || req.isTvListener)) {
+    sendError(403, 'Owner tools are local-only');
+    return;
+  }
+
+  // -------------------------------------------------------------------------
   // Outside Viewers & Metrics Interceptor
   // -------------------------------------------------------------------------
   const isLoopback = (ip) => !ip || ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1' || ip.startsWith('127.');
@@ -890,9 +1077,11 @@ const server = http.createServer(async (req, res) => {
     stats.lastVisitedAt = new Date().toISOString();
     if (isOutside) {
       stats.outsideViews++;
-      if (!stats.uniqueIps.includes(clientIp)) {
-        stats.uniqueIps.push(clientIp);
+      const ip = normalizeClientIp(clientIp);
+      if (ip && !stats.uniqueIps.includes(ip) && !stats.uniqueIps.includes(clientIp)) {
+        stats.uniqueIps.push(ip);
       }
+      recordRecentViewer(req, ip || clientIp);
     }
     debouncedSaveStats();
   }
@@ -908,7 +1097,23 @@ const server = http.createServer(async (req, res) => {
         totalViews: stats.totalViews,
         uniqueVisitors: stats.uniqueIps.length,
         streamsLaunched: stats.streamsLaunched,
-        remoteUrl: activeTunnelUrl || stats.activeTunnelUrl || '',
+        remoteUrl: req.isTvListener ? '' : (activeTunnelUrl || stats.activeTunnelUrl || ''),
+      });
+      return;
+    }
+
+    // Read-only recent-viewer list for the owner (loopback) and TV token holders.
+    // Labels are masked (last octet / device class only). Full addresses are never sent.
+    if (pathname === '/api/stats/viewers' && req.method === 'GET') {
+      if (req.isPublic || (req.isTvListener && !req.isTvAuthed)) {
+        sendError(req.isTvListener && !req.isTvAuthed ? 401 : 403, 'Viewers list is not public');
+        return;
+      }
+      sendJson(200, {
+        success: true,
+        outsideViews: stats.outsideViews,
+        uniqueVisitors: stats.uniqueIps.length,
+        recent: publicViewerList(),
       });
       return;
     }
@@ -1235,7 +1440,7 @@ const server = http.createServer(async (req, res) => {
       const hostName = String(h.host || '').replace(/:\d+$/, '');
       const viaProxy = h['x-forwarded-for'] || h['x-forwarded-host'] || h['cf-connecting-ip'] || h['x-real-ip'] || h['forwarded'];
       const localHost = /^(127\.0\.0\.1|localhost|\[::1\])$/.test(hostName);
-      if (req.isPublic || viaProxy || !localHost) { sendError(403, 'File view is local-only'); return; }
+      if ((req.isPublic || viaProxy || !localHost) && !req.isTvAuthed) { sendError(403, 'File view is local-only'); return; }
       const postOnly = pathname === '/api/files/progress' || pathname === '/api/watch-mark';
       if (req.method !== (postOnly ? 'POST' : 'GET')) { sendError(405, postOnly ? 'POST only' : 'GET only'); return; }
       const readBody = async () => { let b = ''; for await (const c of req) { b += c; if (b.length > 4096) break; } try { return JSON.parse(b || '{}'); } catch { return null; } };
@@ -1306,7 +1511,7 @@ const server = http.createServer(async (req, res) => {
       const hostName = String(h.host || '').replace(/:\d+$/, '');
       const viaProxy = h['x-forwarded-for'] || h['x-forwarded-host'] || h['cf-connecting-ip'] || h['x-real-ip'] || h['forwarded'];
       const localHost = /^(127\.0\.0\.1|localhost|\[::1\]|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)$/.test(hostName);
-      if (req.isPublic || viaProxy || !localHost) { sendError(403, 'Media downloader is local-only'); return; }
+      if (req.isPublic || req.isTvListener || viaProxy || !localHost) { sendError(403, 'Media downloader is local-only'); return; }
       const readJson = async () => { let b = ''; for await (const c of req) b += c; return JSON.parse(b || '{}'); };
       try {
         if (pathname === '/api/media/start' && req.method === 'POST') { sendJson(200, { success: true, job: startMediaDownload(await readJson()) }); return; }
@@ -1644,6 +1849,15 @@ const server = http.createServer(async (req, res) => {
         '.jpg': 'image/jpeg',
         '.svg': 'image/svg+xml',
       };
+      // Auto-enable TV layout on the opt-in TV listeners only. Loopback is unchanged.
+      if (req.isTvListener && (pathname === '/' || pathname === '/index.html')) {
+        let html = fs.readFileSync(filePath, 'utf8');
+        html = html.replace('<html lang="en">', '<html lang="en" class="tv-mode">');
+        html = html.replace('<body>', '<body class="tv-mode">');
+        res.writeHead(200, { 'Content-Type': mimeTypes['.html'], 'Cache-Control': 'no-store' });
+        res.end(html);
+        return;
+      }
       res.writeHead(200, { 'Content-Type': mimeTypes[ext] || 'application/octet-stream' });
       fs.createReadStream(filePath).pipe(res);
       return;
@@ -1660,10 +1874,29 @@ const server = http.createServer(async (req, res) => {
 // tunnel visitors can never be mistaken for the owner (headers can be forged; ports can't).
 if (TUNNEL_ENABLED) http.createServer((req, res) => { req.isPublic = true; server.emit('request', req, res); }).listen(PUBLIC_PORT, '127.0.0.1');
 
+if (TV_ENABLED) {
+  const tokenReady = !!loadShareToken();
+  if (!tokenReady) {
+    console.error('[AnimePulse] ANIMEPULSE_TV=1 but no share token was found; TV listeners were not started.');
+    console.error('[AnimePulse] Set ANIMEPULSE_SHARE_TOKEN or ANIMEPULSE_SHARE_TOKEN_FILE.');
+  } else {
+    for (const tvHost of TV_HOSTS) {
+      const tvServer = http.createServer((req, res) => { req.isTvListener = true; server.emit('request', req, res); });
+      tvServer.on('error', (err) => {
+        console.error(`[AnimePulse] TV listener failed on ${tvHost}:${PORT}: ${err.message}`);
+      });
+      tvServer.listen(PORT, tvHost, () => {
+        console.log(`[AnimePulse] TV listener at http://${tvHost}:${PORT} (token required)`);
+      });
+    }
+  }
+}
+
 server.listen(PORT, HOST, () => {
   cleanupOrphanedParts();
   console.log(`[AnimePulse] Server running at http://${HOST}:${PORT}`);
   if (TUNNEL_ENABLED) startTunnel();
   else console.log('[AnimePulse] Sharing is OFF (loopback only, no tunnel). Set ANIMEPULSE_SHARE=1 to enable.');
+  if (TV_ENABLED) console.log('[AnimePulse] TV listeners requested (ANIMEPULSE_TV=1). Loopback remains token-free.');
   prewarmLiveCatalog();
 });

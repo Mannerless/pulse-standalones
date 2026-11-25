@@ -1,0 +1,303 @@
+/* Additive TV / D-pad styles. Loopback desktop is unchanged unless :focus-visible applies. */
+
+:focus-visible {
+  outline: 3px solid #6ee7ff;
+  outline-offset: 3px;
+}
+
+/* 10-foot UI, applied when the TV listener injects .tv-mode (or tv.js detects a TV). */
+html.tv-mode {
+  font-size: 22px;
+}
+
+html.tv-mode body {
+  /* ~5% overscan-safe inset. Top is tighter because Silk's address bar already eats a strip. */
+  padding: 1.5vh 5vw 5vh;
+  box-sizing: border-box;
+}
+
+html.tv-mode :focus,
+html.tv-mode :focus-visible {
+  outline: 4px solid #7cf0ff;
+  outline-offset: 4px;
+  box-shadow: 0 0 0 4px rgba(124, 240, 255, 0.28);
+}
+
+/* --- Slim header: logo + large search + Outside Views badge. Owner tools hidden. --- */
+html.tv-mode .navbar {
+  padding: 10px 0;
+  gap: 16px;
+  position: sticky;
+  top: 0;
+}
+
+html.tv-mode .brand-subtitle {
+  display: none;
+}
+
+html.tv-mode .brand-title {
+  font-size: 28px !important;
+}
+
+html.tv-mode .logo-icon {
+  width: 56px !important;
+  height: 56px !important;
+  font-size: 28px !important;
+  border-radius: 14px !important;
+}
+
+html.tv-mode .search-container {
+  flex: 1 1 auto;
+  max-width: none !important;
+  min-height: 56px;
+  padding: 0 18px !important;
+}
+
+html.tv-mode #search-input {
+  font-size: 22px !important;
+  min-height: 56px;
+}
+
+html.tv-mode .search-icon {
+  font-size: 22px;
+}
+
+/* Keep the Outside Views badge; hide laptop-only header controls. */
+html.tv-mode #btn-share-link,
+html.tv-mode #btn-media-dl,
+html.tv-mode #btn-display-pin,
+html.tv-mode #btn-close-window {
+  display: none !important;
+}
+
+html.tv-mode .outside-viewers-badge {
+  min-height: 56px;
+  min-width: 56px;
+  padding: 0 18px;
+  font-size: 18px !important;
+  gap: 10px;
+  border-radius: 14px;
+  flex-shrink: 0;
+}
+
+html.tv-mode .outside-viewers-badge strong {
+  font-size: 18px !important;
+  padding: 4px 10px;
+}
+
+/* --- Tabs --- */
+html.tv-mode .category-tabs {
+  padding: 10px 0 !important;
+  gap: 12px !important;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+html.tv-mode .category-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+html.tv-mode .tab-btn {
+  min-height: 56px;
+  font-size: 20px !important;
+  padding: 0 20px !important;
+  border-radius: 16px !important;
+  flex-shrink: 0;
+}
+
+/* --- Genre pills: larger, horizontally scrollable D-pad row --- */
+html.tv-mode .genre-bar {
+  padding: 8px 0 !important;
+  gap: 12px !important;
+  flex-wrap: nowrap !important;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+}
+
+html.tv-mode .genre-bar::-webkit-scrollbar {
+  display: none;
+}
+
+html.tv-mode .genre-chip {
+  min-height: 56px;
+  font-size: 18px !important;
+  padding: 0 22px !important;
+  border-radius: 28px !important;
+  flex-shrink: 0;
+  scroll-snap-align: start;
+}
+
+/* --- Shorter hero so the first row of cards is on screen --- */
+html.tv-mode .hero-spotlight {
+  margin: 10px 0 16px !important;
+  min-height: 140px !important;
+  max-height: 170px;
+  border-radius: 14px;
+}
+
+html.tv-mode .hero-content {
+  padding: 16px 22px !important;
+  max-width: 85% !important;
+}
+
+html.tv-mode .hero-title {
+  font-size: 26px !important;
+  margin-bottom: 6px !important;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+html.tv-mode .hero-synopsis {
+  display: none !important;
+}
+
+html.tv-mode .hero-genres {
+  display: none !important;
+}
+
+html.tv-mode .hero-actions {
+  gap: 12px;
+}
+
+html.tv-mode .btn-hero-primary,
+html.tv-mode .btn-hero-secondary,
+html.tv-mode button,
+html.tv-mode .btn-watch-card,
+html.tv-mode .btn-card-quick-play {
+  min-height: 56px;
+  min-width: 56px;
+}
+
+html.tv-mode .btn-hero-primary,
+html.tv-mode .btn-hero-secondary {
+  font-size: 18px;
+  padding: 0 22px;
+}
+
+html.tv-mode .section-header,
+html.tv-mode .section-header h2 {
+  font-size: 1.15em;
+}
+
+/* --- Bigger cards and art --- */
+html.tv-mode .anime-card,
+html.tv-mode .live-card,
+html.tv-mode .history-card {
+  border-radius: 16px !important;
+}
+
+html.tv-mode .card-poster-box {
+  /* slightly shorter than 2/3 so more of the first row fits under the short hero */
+  aspect-ratio: 2 / 2.7;
+}
+
+html.tv-mode .card-title {
+  font-size: 18px !important;
+}
+
+html.tv-mode .btn-watch-card {
+  font-size: 16px !important;
+  padding: 0 14px !important;
+}
+
+html.tv-mode .anime-card:focus .card-quick-overlay,
+html.tv-mode .anime-card:focus-visible .card-quick-overlay {
+  opacity: 1;
+}
+
+html.tv-mode .btn-card-quick-play {
+  width: 56px;
+  height: 56px;
+  font-size: 22px;
+  transform: none;
+}
+
+/* Results grid: fewer, larger tiles */
+html.tv-mode .results-grid,
+html.tv-mode #results-grid,
+html.tv-mode .card-grid,
+html.tv-mode .anime-grid {
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)) !important;
+  gap: 18px !important;
+}
+
+/* --- Viewers panel --- */
+.viewers-panel[hidden] {
+  display: none !important;
+}
+
+.viewers-panel {
+  position: fixed;
+  inset: 0;
+  z-index: 4000;
+  background: rgba(0, 0, 0, 0.62);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5vh 5vw;
+}
+
+.viewers-panel-card {
+  background: #161822;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 18px;
+  padding: 28px 32px;
+  width: min(720px, 100%);
+  max-height: 80vh;
+  overflow: auto;
+  color: #e8eef7;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55);
+}
+
+.viewers-panel-card h2 {
+  margin: 0 0 8px;
+  font-size: 28px;
+}
+
+.viewers-panel-summary {
+  margin: 0 0 16px;
+  color: #a8b3c7;
+  font-size: 16px;
+}
+
+.viewers-panel-list {
+  list-style: none;
+  margin: 0 0 20px;
+  padding: 0;
+}
+
+.viewers-panel-list li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 18px;
+}
+
+.viewers-panel-list .viewer-time {
+  color: #9aa6bb;
+  font-size: 15px;
+}
+
+.viewers-panel-close {
+  min-height: 56px;
+  min-width: 120px;
+  padding: 0 28px;
+  font-size: 20px;
+  border-radius: 14px;
+  border: none;
+  background: linear-gradient(135deg, #2563eb, #06b6d4);
+  color: #fff;
+  cursor: pointer;
+  font-family: inherit;
+  font-weight: 700;
+}
+
+html.tv-mode .viewers-panel-card {
+  font-size: 20px;
+}
