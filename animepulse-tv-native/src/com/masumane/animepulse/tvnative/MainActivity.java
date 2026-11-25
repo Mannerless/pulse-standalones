@@ -1,6 +1,7 @@
 package com.masumane.animepulse.tvnative;
 
 import android.app.Activity;
+import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -33,8 +34,8 @@ public class MainActivity extends Activity {
     static final int MUTED = 0xFFB8C0D4;
     static final int CYAN = 0xFF1CF0FF;
     static final int ACCENT = 0xFF7B2FF7;
-    static final String[] MODES = {"trending", "popular", "airing", "top"};
-    static final String[] MODE_LABELS = {"Trending", "Popular", "Airing", "Top Rated"};
+    static final String[] MODES = {"trending", "popular", "airing", "top", "cached"};
+    static final String[] MODE_LABELS = {"Trending", "Popular", "Airing", "Top Rated", "Cached"};
 
     TextView statusView;
     LinearLayout modeRow;
@@ -173,7 +174,8 @@ public class MainActivity extends Activity {
                 try {
                     JSONObject health = api.getHealth();
                     final boolean ok = health.optBoolean("ok");
-                    final List<Show> list = api.getFeed(requested, 1);
+                    final List<Show> list = "cached".equals(requested)
+                            ? loadCachedShows() : api.getFeed(requested, 1);
                     runOnUiThread(new Runnable() {
                         public void run() {
                             if (!requested.equals(mode)) return;
@@ -194,6 +196,50 @@ public class MainActivity extends Activity {
                 }
             }
         }, "ap-feed").start();
+    }
+
+
+    void openDetails(Show show) {
+        if (show == null || show.id <= 0) return;
+        Intent i = new Intent(this, DetailsActivity.class);
+        i.putExtra(DetailsActivity.EXTRA_ID, show.id);
+        i.putExtra(DetailsActivity.EXTRA_TITLE, show.title);
+        startActivity(i);
+    }
+
+    List<Show> loadCachedShows() throws Exception {
+        org.json.JSONObject lib = api.getLibrary();
+        org.json.JSONArray items = lib.optJSONArray("library");
+        List<Show> out = new ArrayList<Show>();
+        if (items == null) return out;
+        java.util.Set<Integer> seen = new java.util.HashSet<Integer>();
+        for (int i = 0; i < items.length(); i++) {
+            org.json.JSONObject it = items.optJSONObject(i);
+            if (it == null) continue;
+            int id;
+            try { id = Integer.parseInt(String.valueOf(it.opt("animeId"))); }
+            catch (Exception e) { continue; }
+            if (id <= 0 || seen.contains(id)) continue;
+            seen.add(id);
+            Show s = new Show();
+            s.id = id;
+            s.title = it.optString("title", "Cached title");
+            s.episodes = it.optInt("episode");
+            try {
+                org.json.JSONObject details = api.getDetails(id, Math.max(1, s.episodes));
+                org.json.JSONObject anime = details.optJSONObject("anime");
+                if (anime != null) {
+                    String t = Show.pickTitle(anime.optJSONObject("title"));
+                    if (t != null && t.length() > 0) s.title = t;
+                    org.json.JSONObject cover = anime.optJSONObject("coverImage");
+                    if (cover != null) s.coverUrl = Show.firstUrl(cover, "extraLarge", "large", "medium");
+                    s.bannerUrl = anime.optString("bannerImage", "");
+                    s.description = anime.optString("description", "");
+                }
+            } catch (Exception ignored) {}
+            out.add(s);
+        }
+        return out;
     }
 
     class PosterAdapter extends BaseAdapter {
@@ -242,6 +288,12 @@ public class MainActivity extends Activity {
                 public void onFocusChange(View v, boolean hasFocus) {
                     target.setBackground(cardBackground(hasFocus));
                     target.setPadding(dp(3), dp(3), dp(3), dp(3));
+                }
+            });
+            final Show show = s;
+            card.setOnClickListener(new View.OnClickListener() {
+                public void onClick(View v) {
+                    openDetails(show);
                 }
             });
             return card;
