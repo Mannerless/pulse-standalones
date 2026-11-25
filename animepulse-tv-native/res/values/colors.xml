@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ap_bg">#FF0B1020</color>
+    <color name="ap_panel">#FF141A2E</color>
+    <color name="ap_accent">#FF7B2FF7</color>
+    <color name="ap_cyan">#FF1CF0FF</color>
+    <color name="ap_text">#FFFFFFFF</color>
+    <color name="ap_muted">#FFB8C0D4</color>
+</resources>
