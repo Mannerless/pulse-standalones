@@ -8,6 +8,7 @@ import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.util.TypedValue;
 import android.view.Gravity;
+import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
@@ -38,6 +39,7 @@ public class MainActivity extends Activity {
     static final String[] MODE_LABELS = {"Trending", "Popular", "Airing", "Top Rated", "Cached"};
 
     TextView statusView;
+    HorizontalScrollView tabScroller;
     LinearLayout modeRow;
     GridView grid;
     PosterAdapter adapter;
@@ -46,6 +48,9 @@ public class MainActivity extends Activity {
     final List<Show> shows = new ArrayList<Show>();
     int itemWidth;
     int itemHeight;
+    int gridCols = 5;
+    /** Incremented at the start of each loadFeed so a stale page load is ignored. */
+    volatile int feedSeq;
     final List<Button> modeButtons = new ArrayList<Button>();
 
     @Override
@@ -58,7 +63,7 @@ public class MainActivity extends Activity {
 
         int screenW = getResources().getDisplayMetrics().widthPixels;
         int hPad = dp(20);
-        int cols = 5;
+        int cols = gridCols;
         int gap = dp(12);
         itemWidth = (screenW - hPad * 2 - gap * (cols - 1)) / cols;
         itemHeight = Math.round(itemWidth * 1.42f);
@@ -84,17 +89,29 @@ public class MainActivity extends Activity {
         header.addView(statusView);
         root.addView(header);
 
-        HorizontalScrollView scroller = new HorizontalScrollView(this);
-        scroller.setHorizontalScrollBarEnabled(false);
-        scroller.setPadding(0, dp(10), 0, dp(10));
+        tabScroller = new HorizontalScrollView(this);
+        tabScroller.setHorizontalScrollBarEnabled(false);
+        tabScroller.setPadding(0, dp(10), 0, dp(10));
+        // Do not let the scroller itself take D-pad focus or trap LEFT/RIGHT.
+        tabScroller.setFocusable(false);
+        tabScroller.setFocusableInTouchMode(false);
+        tabScroller.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);
         modeRow = new LinearLayout(this);
         modeRow.setOrientation(LinearLayout.HORIZONTAL);
+        modeRow.setFocusable(false);
         for (int i = 0; i < MODES.length; i++) {
             final String m = MODES[i];
             Button b = modeButton(MODE_LABELS[i], i == 0);
+            b.setId(View.generateViewId());
             b.setOnClickListener(new View.OnClickListener() {
                 public void onClick(View v) {
                     selectMode(m);
+                }
+            });
+            final int index = i;
+            b.setOnFocusChangeListener(new View.OnFocusChangeListener() {
+                public void onFocusChange(View v, boolean hasFocus) {
+                    styleModeButton((Button) v, MODES[index].equals(mode));
                 }
             });
             modeButtons.add(b);
@@ -103,8 +120,8 @@ public class MainActivity extends Activity {
             lp.rightMargin = dp(10);
             modeRow.addView(b, lp);
         }
-        scroller.addView(modeRow);
-        root.addView(scroller, new LinearLayout.LayoutParams(
+        tabScroller.addView(modeRow);
+        root.addView(tabScroller, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         grid = new GridView(this);
@@ -130,9 +147,22 @@ public class MainActivity extends Activity {
                 updateSelectionRings(-1);
             }
         });
-        for (int i = 0; i < modeButtons.size(); i++) {
-            modeButtons.get(i).setNextFocusDownId(grid.getId());
-        }
+        wireTabFocus();
+        grid.setNextFocusUpId(modeButtons.get(0).getId());
+        grid.setOnKeyListener(new View.OnKeyListener() {
+            public boolean onKey(View v, int keyCode, KeyEvent event) {
+                if (event.getAction() != KeyEvent.ACTION_DOWN) return false;
+                if (keyCode == KeyEvent.KEYCODE_DPAD_UP && isFirstGridRow()) {
+                    focusCurrentTab();
+                    return true;
+                }
+                if (keyCode == KeyEvent.KEYCODE_BACK) {
+                    focusCurrentTab();
+                    return true;
+                }
+                return false;
+            }
+        });
         root.addView(grid, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
         setContentView(root);
@@ -148,8 +178,13 @@ public class MainActivity extends Activity {
 
     void selectMode(String m) {
         mode = m;
+        feedSeq++; // cancel any in-flight feed / page load for the previous tab
         for (int i = 0; i < modeButtons.size(); i++) {
             styleModeButton(modeButtons.get(i), MODES[i].equals(mode));
+        }
+        if (!modeButtons.isEmpty()) {
+            int idx = currentModeIndex();
+            grid.setNextFocusUpId(modeButtons.get(idx).getId());
         }
         loadFeed();
     }
@@ -175,15 +210,14 @@ public class MainActivity extends Activity {
             bg.setColor(PANEL);
             b.setTextColor(MUTED);
         }
-        bg.setStroke(dp(2), selected ? ACCENT : 0x00000000);
-        b.setBackground(focusAware(bg));
-    }
-
-    GradientDrawable focusAware(GradientDrawable base) {
-        return base;
+        // Cyan ring when the D-pad is on this tab, even if it is not the selected mode.
+        int stroke = b.hasFocus() ? CYAN : (selected ? ACCENT : 0x00000000);
+        bg.setStroke(dp(2), stroke);
+        b.setBackground(bg);
     }
 
     void loadFeed() {
+        final int seq = ++feedSeq;
         statusView.setText("Loading " + mode + "…");
         final String requested = mode;
         new Thread(new Runnable() {
@@ -191,28 +225,87 @@ public class MainActivity extends Activity {
                 try {
                     JSONObject health = api.getHealth();
                     final boolean ok = health.optBoolean("ok");
+                    if (seq != feedSeq) return;
                     final List<Show> list = "cached".equals(requested)
                             ? loadCachedShows() : api.getFeed(requested, 1);
+                    if (seq != feedSeq) return;
                     runOnUiThread(new Runnable() {
                         public void run() {
-                            if (!requested.equals(mode)) return;
+                            if (seq != feedSeq || !requested.equals(mode)) return;
                             shows.clear();
                             shows.addAll(list);
                             adapter.notifyDataSetChanged();
                             statusView.setText((ok ? "API healthy" : "API not ok")
                                     + "  ·  " + list.size() + " titles");
-                            if (grid.getChildCount() >= 0) grid.requestFocus();
+                            // Never steal focus from the tab bar (the always-true
+                            // getChildCount() >= 0 check used to yank focus back to
+                            // the Trending grid mid-navigation).
+                            if (!tabBarHasFocus()) {
+                                grid.requestFocus();
+                            }
                         }
                     });
                 } catch (final Exception e) {
                     runOnUiThread(new Runnable() {
                         public void run() {
+                            if (seq != feedSeq) return;
                             statusView.setText("Failed to load: " + safeMessage(e));
                         }
                     });
                 }
             }
         }, "ap-feed").start();
+    }
+
+    void wireTabFocus() {
+        int n = modeButtons.size();
+        for (int i = 0; i < n; i++) {
+            Button b = modeButtons.get(i);
+            b.setNextFocusDownId(grid.getId());
+            b.setNextFocusUpId(b.getId());
+            b.setNextFocusLeftId(modeButtons.get(i == 0 ? 0 : i - 1).getId());
+            b.setNextFocusRightId(modeButtons.get(i == n - 1 ? n - 1 : i + 1).getId());
+        }
+    }
+
+    int currentModeIndex() {
+        for (int i = 0; i < MODES.length; i++) {
+            if (MODES[i].equals(mode)) return i;
+        }
+        return 0;
+    }
+
+    boolean tabBarHasFocus() {
+        for (int i = 0; i < modeButtons.size(); i++) {
+            if (modeButtons.get(i).hasFocus()) return true;
+        }
+        return false;
+    }
+
+    boolean isFirstGridRow() {
+        int pos = grid.getSelectedItemPosition();
+        return pos == AdapterView.INVALID_POSITION || pos < gridCols;
+    }
+
+    void focusCurrentTab() {
+        if (modeButtons.isEmpty()) return;
+        int idx = currentModeIndex();
+        Button b = modeButtons.get(idx);
+        grid.setNextFocusUpId(b.getId());
+        b.requestFocus();
+        if (tabScroller != null && modeRow != null) {
+            tabScroller.requestChildFocus(modeRow, b);
+        }
+        updateSelectionRings(-1);
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (grid != null && grid.hasFocus()) {
+            focusCurrentTab();
+            return;
+        }
+        super.onBackPressed();
     }
 
 
