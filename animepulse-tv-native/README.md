@@ -14,8 +14,10 @@ and this app will not replace the working wrapper.
 - [x] Step 1: Leanback launcher + HttpURLConnection client for `/api/health` and `/api/feed`
 - [x] Step 2: Browse grid with covers
 - [x] Step 3: Details screen
-- [x] Step 4: MediaPlayer playback of cached episode URLs (built, not yet verified on the TV)
-- Stopped at: step 4 tested on the Fire TV (details, cached playback, pause/resume, BACK). TV left on the native Trending grid with playback stopped. Small bugfixes committed (D-pad item click, cover reload, TextureView player).
+- [x] Step 4: MediaPlayer playback of cached episode URLs (verified on the Fire TV: details, cached playback, pause/resume, BACK)
+- [x] Cached-tab blank cover fix (commit 7326da8)
+- [x] Episode list when AniList omits the count (commit 1b9fe1d)
+- Stopped at: both follow-up fixes are committed on `release/animepulse-tv-apps`. The fixed APK was installed with `install -r`. On-TV UI verification of the two fixes was blocked: the TV could not reach the API (`patricks-tv` was offline on the tailnet; hotspot ICMP to 10.146.65.53 works but TCP 7888 times out, likely UFW on wlo1). After the failed Cached load, the Amazon launcher took the foreground, so no further keypresses were sent.
 
 ## Token handling (do not print, do not commit)
 
@@ -34,7 +36,6 @@ Signing keystore (outside the repo, mode 600): `~/.android/animepulse-tv.keystor
 ./build.sh
 ```
 
-Do not install on the Fire TV until step 2 shows a cover grid.
 Fire TV serial is `10.146.65.136:5555` only. Do not target other devices.
 
 If Patrick wants this native app removed later (and only then):
@@ -62,3 +63,12 @@ Do not uninstall the wrapper or anything else.
   4. SELECT should pause/resume; BACK should return to details.
 
 - Testing (2026-11-25 ~3:50–4:05 AM America/New_York): Step-4 APK installed with `install -r`. D-pad SELECT initially did not open details (GridView had no OnItemClickListener); fixed and reinstalled. Cover grid went blank when selection called `notifyDataSetChanged` (rebind); fixed by restyling in place. SurfaceView playback was confirmed via dumpsys (H.264 1920x1080, AAC, audio started, pause froze frame count, resume advanced it) but screencaps were black because of the hardware overlay; switched player to TextureView and recaptured real frames. Cached tab played Daemons of the Shadow Realm ep 14. BACK returned to details, then home. Playback stopped. TV left on the Trending grid.
+
+- Follow-up fixes (2026-11-25 ~7:27 AM America/New_York): two open issues from the step-4 test were fixed on `release/animepulse-tv-apps` (never on main).
+
+  1. Cached-tab covers often blank. Root cause: `/api/download/library` has no cover field (no server change was made). The client already fills covers from `/api/details`, but a failed first image fetch left the ImageView tagged so `getView` never rebound, and ImageLoader did not retry. Fix in 7326da8: ImageLoader retries a fetch up to three times with 400ms/800ms backoff; `getView` rebinds if the poster URL changed or the drawable is empty; Cached tab prefers cover `large` then `extraLarge`/`medium`, then the banner if the cover is missing.
+
+  2. Shows with no AniList episode count (e.g. Black Clover Season 2, id 195604, `episodes` is null) showed no episode list. Fix in 1b9fe1d: `resolveEpisodeCount` uses AniList `episodes` when present, otherwise falls back in order to (1) the highest cached/downloaded episode for the title, (2) the provider/`streamingEpisodes` list length, (3) `nextAiringEpisode.episode - 1` (or 1 if the next episode is 1), (4) a 12-episode cour as a last-resort manual list. A short status note explains which fallback was used. For Black Clover Season 2 this should list 8 aired episodes (next airing is ep 9).
+
+  The fixed APK was built and installed with `./scripts/install.sh` (`install -r`, token via `run-as`, wrapper left in place). After `adb connect 10.146.65.136:5555`, the native app was launched and the Cached tab was opened with foreground checks before every key. `/workspace/anime_pulse/17-native-cached-cover.png` shows the Cached tab selected and the error `failed to connect to /100.118.77.78 (port 7888) from /10.146.65.136 ... after 12000ms`. `patricks-tv` was offline on the tailnet (last seen ~47 minutes earlier). The TV can ping the laptop hotspot address 10.146.65.53 but TCP 7888 times out, so a client fallback to the hotspot would not have helped without a UFW change (not applied; no sudo). After that capture, focus was `com.amazon.tv.launcher`, so input was stopped. Episode-list UI was not recaptured on the TV. Re-verify both screens when the TV can reach the API (Tailscale signed in on the TV, or inbound 7888 allowed on the hotspot).
+
