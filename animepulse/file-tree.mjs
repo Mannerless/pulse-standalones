@@ -20,6 +20,8 @@ export const CATEGORIES = [
   { id: 'cache', icon: '⏳', label: 'Downloading / cache', note: 'Temporary episodes on the internal disk (not yet saved to the drive)', root: path.join(__dirname, 'data', 'cache'), external: false },
   { id: 'local', icon: '💽', label: 'Local library', note: 'Saved episodes kept on the internal disk', root: path.join(__dirname, 'data', 'library'), external: false },
   { id: 'legacy', icon: '📦', label: 'Legacy library', note: 'Older AnimePulse install on the internal disk', root: path.join(HOME, 'anime-pulse', 'data', 'library'), external: false },
+  // Optional read-only browsing of an extra folder on the external drive (set ANIMEPULSE_EXTRA_ROOT in the systemd unit).
+  ...(process.env.ANIMEPULSE_EXTRA_ROOT ? [{ id: 'extra', icon: '🗄️', label: 'External drive (browse)', note: 'Read-only view of the external drive', root: process.env.ANIMEPULSE_EXTRA_ROOT, external: true }] : []),
 ];
 
 const byId = (id) => CATEGORIES.find((c) => c.id === id);

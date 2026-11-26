@@ -17,6 +17,7 @@
     'select:not([disabled])',
     'textarea:not([disabled])',
     'video',
+    'summary',            // Downloads view: category rows are <details><summary>; the D-pad must be able to land on them
     '.tab-btn',
     '.anime-card',
     '.history-card',
